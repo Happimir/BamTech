@@ -58,7 +58,8 @@ npm test             # unit tests (Vitest)
 npm run build        # production build to web/dist
 # End-to-end checks against the running API and dev server (uses your installed Chrome).
 # Seeds the sample data first if missing. Uses the Development admin password;
-# set E2E_ADMIN_PASSWORD (and ACTS_ADMIN_PASSWORD for the seed) if you seeded your own.
+# set E2E_ADMIN_PASSWORD, E2E_READER_PASSWORD (and ACTS_ADMIN_PASSWORD for the seed)
+# if you seeded your own. Includes axe-core accessibility checks (WCAG 2.1 A/AA).
 npm run e2e
 ```
 

@@ -1,0 +1,21 @@
+.status-page {
+  display: grid;
+  justify-items: start;
+  gap: var(--acts-space-3);
+  max-width: 640px;
+  margin-block: var(--acts-space-8);
+  padding: var(--acts-space-6);
+  border: 1px solid var(--acts-border);
+  border-radius: var(--acts-radius-card);
+  background: var(--acts-surface);
+
+  h1 {
+    margin: 0;
+    font: var(--mat-sys-headline-small);
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+  }
+}

@@ -30,6 +30,7 @@
     "@angular/build": "22.2.0",
     "@angular/cli": "22.2.0",
     "@angular/compiler-cli": "22.2.0",
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "jsdom": "30.1.1",
     "prettier": "3.9.9",
