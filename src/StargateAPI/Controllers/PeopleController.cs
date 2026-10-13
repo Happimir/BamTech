@@ -1,14 +1,17 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
 using StargateAPI.Business.Dtos;
 using StargateAPI.Business.Queries;
+using StargateAPI.Security;
 
 namespace StargateAPI.Controllers
 {
     /// <summary>Stable-ID routes. IDs are opaque UUIDs; the route constraint checks format only.</summary>
     [ApiController]
     [Route("api/people")]
+    [Authorize(Policy = Policies.PeopleRead)]
     public class PeopleController : ControllerBase
     {
         private readonly IMediator _mediator;
@@ -29,6 +32,7 @@ namespace StargateAPI.Controllers
 
         /// <summary>Always creates a new person, even when a namesake exists. Repeating it creates another.</summary>
         [HttpPost("")]
+        [Authorize(Policy = Policies.PeopleWrite)]
         public async Task<IActionResult> CreatePerson([FromBody] CreatePersonDto request, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(
@@ -41,6 +45,7 @@ namespace StargateAPI.Controllers
         /// version is a 409. Renaming never changes the person's ID or duty history.
         /// </summary>
         [HttpPut("{id:guid}")]
+        [Authorize(Policy = Policies.PeopleWrite)]
         public async Task<IActionResult> UpdatePerson(Guid id, [FromBody] UpdatePersonDto request, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(new UpdatePerson(
@@ -75,6 +80,7 @@ namespace StargateAPI.Controllers
         /// derived, never accepted. Supply expectedVersion to reject the write if the person changed.
         /// </summary>
         [HttpPost("{id:guid}/duties")]
+        [Authorize(Policy = Policies.DutiesWrite)]
         public async Task<IActionResult> AssignDuty(Guid id, [FromBody] AssignDutyDto request, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(new AssignDuty(

@@ -1,8 +1,10 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
 using StargateAPI.Business.Dtos;
 using StargateAPI.Business.Queries;
+using StargateAPI.Security;
 
 namespace StargateAPI.Controllers
 {
@@ -12,6 +14,7 @@ namespace StargateAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("[controller]")]
+    [Authorize(Policy = Policies.PeopleRead)]
     public class PersonController : ControllerBase
     {
         private readonly IMediator _mediator;
@@ -37,6 +40,7 @@ namespace StargateAPI.Controllers
         /// Renaming requires expectedVersion; an ambiguous name is a 409 (use PUT /api/people/{id}).
         /// </summary>
         [HttpPut("by-name")]
+        [Authorize(Policy = Policies.PeopleWrite)]
         public async Task<IActionResult> UpsertPersonByName(
             [FromQuery] string? name, [FromBody] NameUpdateDto request, CancellationToken cancellationToken)
         {
@@ -58,6 +62,7 @@ namespace StargateAPI.Controllers
 
         /// <summary>Deprecated raw-string create; prefer POST /api/people with structured fields.</summary>
         [HttpPost("")]
+        [Authorize(Policy = Policies.PeopleWrite)]
         public async Task<IActionResult> CreatePerson([FromBody] string name, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(new CreatePerson(name), cancellationToken);

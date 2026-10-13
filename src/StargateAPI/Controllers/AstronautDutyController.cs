@@ -1,14 +1,17 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
 using StargateAPI.Business.Dtos;
 using StargateAPI.Business.Queries;
+using StargateAPI.Security;
 
 namespace StargateAPI.Controllers
 {
     /// <summary>Original name-based duty routes, kept as compatibility adapters.</summary>
     [ApiController]
     [Route("[controller]")]
+    [Authorize(Policy = Policies.PeopleRead)]
     public class AstronautDutyController : ControllerBase
     {
         private readonly IMediator _mediator;
@@ -31,6 +34,7 @@ namespace StargateAPI.Controllers
         /// ambiguous name is rejected before anything changes. Prefer POST /api/people/{id}/duties.
         /// </summary>
         [HttpPost("")]
+        [Authorize(Policy = Policies.DutiesWrite)]
         public async Task<IActionResult> CreateAstronautDuty([FromBody] LegacyAssignDutyDto request, CancellationToken cancellationToken)
         {
             var result = await _mediator.Send(new AssignDuty(

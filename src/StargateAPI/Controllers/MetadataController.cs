@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Domain;
 using StargateAPI.Business.Dtos;
+using StargateAPI.Security;
 
 namespace StargateAPI.Controllers
 {
@@ -10,6 +12,7 @@ namespace StargateAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("api/metadata")]
+    [Authorize(Policy = Policies.PeopleRead)]
     public class MetadataController : ControllerBase
     {
         private readonly TimeProvider _timeProvider;

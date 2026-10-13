@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -7,6 +8,7 @@ using StargateAPI.Business.Data;
 using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 using StargateAPI.Controllers;
+using StargateAPI.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +18,8 @@ builder.Services.AddControllers(options =>
     {
         // Command bodies are small; bound them so oversized payloads are rejected early.
         options.Filters.Add(new RequestSizeLimitAttribute(32 * 1024));
+        // Every POST/PUT/PATCH/DELETE (including login and logout) must carry the antiforgery token.
+        options.Filters.Add<AntiforgeryValidationFilter>();
     })
     .AddJsonOptions(options =>
     {
@@ -54,7 +58,18 @@ builder.Services.AddSingleton(TimeProvider.System);
 // Per-request logging facts shared by the HTTP boundary, handlers and exception handling.
 builder.Services.AddScoped<OperationContext>();
 
+// Identity, revocable cookie sessions, role policies (authentication required by default), antiforgery.
+builder.Services.AddActsSecurity(builder.Configuration);
+
 var app = builder.Build();
+
+// Setup command: dotnet run --project src/StargateAPI -- seed-demo-users
+if (args.Contains(DemoUserSeeder.Command))
+{
+    Environment.ExitCode = await DemoUserSeeder.RunAsync(
+        app.Services, app.Configuration, app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Setup"));
+    return;
+}
 
 // Configure the HTTP request pipeline.
 // Outermost: records one outcome per request after exception handling has produced the response.
@@ -69,6 +84,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+
+// Record the authenticated account (never the selected Person) for audits and request outcomes.
+app.Use(async (httpContext, next) =>
+{
+    if (httpContext.User.FindFirst(ClaimTypes.NameIdentifier) is { } subject)
+    {
+        var operation = httpContext.RequestServices.GetRequiredService<OperationContext>();
+        operation.ActorSubject = subject.Value;
+        operation.ActorIssuer = subject.Issuer;
+    }
+    await next(httpContext);
+});
 
 app.UseAuthorization();
 
