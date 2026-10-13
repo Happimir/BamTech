@@ -10,20 +10,23 @@ using StargateAPI.Business.Data;
 namespace StargateAPI.Tests.Infrastructure;
 
 /// <summary>
-/// An isolated API host per test. Each instance gets its own named shared-cache in-memory
-/// SQLite database, supplied through the real "StarbaseApiDatabase" connection string so the
-/// application's own DbContext wiring is exercised. One connection is held open for the
-/// lifetime of the instance because SQLite discards an in-memory database when its last
-/// connection closes.
+/// An isolated API host per test, using the real "StarbaseApiDatabase" connection string so the
+/// application's own DbContext wiring is exercised.
+/// By default each instance gets a named shared-cache in-memory SQLite database; one connection
+/// is held open because SQLite discards an in-memory database when its last connection closes.
+/// Concurrency tests use a temporary file database instead: shared-cache memory databases use
+/// table-level locking, which is not the locking the application runs with.
 /// </summary>
 public sealed class TestApi : IAsyncDisposable
 {
-    private readonly SqliteConnection _keepAlive;
+    private readonly SqliteConnection? _keepAlive;
+    private readonly string? _databaseFile;
     private readonly WebApplicationFactory<Program> _factory;
 
-    private TestApi(SqliteConnection keepAlive, WebApplicationFactory<Program> factory)
+    private TestApi(SqliteConnection? keepAlive, string? databaseFile, WebApplicationFactory<Program> factory)
     {
         _keepAlive = keepAlive;
+        _databaseFile = databaseFile;
         _factory = factory;
         Client = factory.CreateClient();
     }
@@ -32,11 +35,22 @@ public sealed class TestApi : IAsyncDisposable
 
     public IServiceProvider Services => _factory.Services;
 
-    public static async Task<TestApi> CreateAsync()
+    public static async Task<TestApi> CreateAsync(bool useFileDatabase = false)
     {
-        var connectionString = $"Data Source=stargate-test-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
-        var keepAlive = new SqliteConnection(connectionString);
-        await keepAlive.OpenAsync();
+        SqliteConnection? keepAlive = null;
+        string? databaseFile = null;
+        string connectionString;
+        if (useFileDatabase)
+        {
+            databaseFile = TestDatabaseDirectory.NewDatabasePath("api");
+            connectionString = $"Data Source={databaseFile}";
+        }
+        else
+        {
+            connectionString = $"Data Source=stargate-test-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+            keepAlive = new SqliteConnection(connectionString);
+            await keepAlive.OpenAsync();
+        }
 
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -44,7 +58,7 @@ public sealed class TestApi : IAsyncDisposable
             builder.UseSetting("ConnectionStrings:StarbaseApiDatabase", connectionString);
         });
 
-        var api = new TestApi(keepAlive, factory);
+        var api = new TestApi(keepAlive, databaseFile, factory);
         await api.WithContextAsync(context => context.Database.MigrateAsync());
         return api;
     }
@@ -74,11 +88,22 @@ public sealed class TestApi : IAsyncDisposable
     public Task<HttpResponseMessage> PostDutyAsync(string name, string rank, string dutyTitle, string dutyStartDate) =>
         Client.PostAsJsonAsync("/AstronautDuty", new { name, rank, dutyTitle, dutyStartDate });
 
+    /// <summary>Posts a duty to the stable-ID route.</summary>
+    public Task<HttpResponseMessage> PostDutyByIdAsync(Guid personId, string rank, string dutyTitle, string dutyStartDate, Guid? expectedVersion = null) =>
+        Client.PostAsJsonAsync($"/api/people/{personId}/duties", new { rank, dutyTitle, dutyStartDate, expectedVersion });
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();
         await _factory.DisposeAsync();
-        await _keepAlive.DisposeAsync();
+        if (_keepAlive is not null)
+        {
+            await _keepAlive.DisposeAsync();
+        }
+        if (_databaseFile is not null)
+        {
+            TestDatabaseDirectory.DeleteDatabase(_databaseFile);
+        }
     }
 }
 
