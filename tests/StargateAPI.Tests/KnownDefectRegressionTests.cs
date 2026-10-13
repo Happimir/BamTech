@@ -21,7 +21,7 @@ public class KnownDefectRegressionTests
         (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
         (await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).EnsureSuccessStatusCode();
 
-        var response = await api.Client.GetAsync("/AstronautDuty/Grace%20Hopper");
+        var response = await api.Client.GetAsync("/AstronautDuty/Grace%20Hopper", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var titles = Json.FindStrings(await Json.ReadAsync(response), "dutyTitle");
@@ -36,7 +36,7 @@ public class KnownDefectRegressionTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Miles O'Brien");
 
-        var response = await api.Client.GetAsync("/Person/Miles%20O'Brien");
+        var response = await api.Client.GetAsync("/Person/Miles%20O'Brien", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Miles O'Brien", Json.FindStrings(await Json.ReadAsync(response), "name"));
@@ -49,10 +49,10 @@ public class KnownDefectRegressionTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Alice Example");
 
-        var response = await api.Client.GetAsync("/Person/" + Uri.EscapeDataString("' OR 1=1 OR '"));
+        var response = await api.Client.GetAsync("/Person/" + Uri.EscapeDataString("' OR 1=1 OR '"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.DoesNotContain("Alice Example", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("Alice Example", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class KnownDefectRegressionTests
         // Starter: returns 200 with a null person inside a "successful" envelope.
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.GetAsync("/Person/Nobody%20Here");
+        var response = await api.Client.GetAsync("/Person/Nobody%20Here", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

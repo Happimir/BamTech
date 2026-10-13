@@ -32,7 +32,7 @@ public class StarterBaselineTests
     {
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.GetAsync("/Person");
+        var response = await api.Client.GetAsync("/Person", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -42,7 +42,7 @@ public class StarterBaselineTests
     {
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.PostAsJsonAsync("/Person", "Ada Lovelace");
+        var response = await api.Client.PostAsJsonAsync("/Person", "Ada Lovelace", TestContext.Current.CancellationToken);
 
         Assert.True(response.IsSuccessStatusCode, $"Create returned {(int)response.StatusCode}");
         var (people, details, duties) = await api.WithContextAsync(async context => (
@@ -107,8 +107,8 @@ public class StarterBaselineTests
         // holds only because CreatePersonPreProcessor never runs; see the registration test below.
         await using var api = await TestApi.CreateAsync();
 
-        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith")).EnsureSuccessStatusCode();
-        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith")).EnsureSuccessStatusCode();
+        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
 
         var count = await api.WithContextAsync(context => context.People.CountAsync(p => p.Name == "Alex Smith"));
         Assert.Equal(2, count);
