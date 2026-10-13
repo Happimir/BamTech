@@ -27,33 +27,18 @@ namespace StargateAPI.Business.Commands
 
         public async Task<Result<PersonDetailDto>> Handle(CreatePerson request, CancellationToken cancellationToken)
         {
-            var errors = new Dictionary<string, string[]>();
-            if (!NameNormalizer.TryNormalize(request.Name, out _, out var nameError))
+            var input = PersonNameInput.Create(request.Name, request.FirstName, request.MiddleName, request.LastName);
+            if (!input.IsSuccess)
             {
-                errors["name"] = [nameError!];
-            }
-            AddPartError(errors, "firstName", request.FirstName);
-            AddPartError(errors, "middleName", request.MiddleName);
-            AddPartError(errors, "lastName", request.LastName);
-            if (errors.Count > 0)
-            {
-                return AppError.Validation(errors);
+                return input.Error;
             }
 
-            var person = Person.Create(request.Name!, request.FirstName, request.MiddleName, request.LastName);
+            var names = input.Value;
+            var person = Person.Create(names.Name, names.FirstName, names.MiddleName, names.LastName);
             _context.People.Add(person);
             await _context.SaveChangesAsync(cancellationToken);
 
-            return new PersonDetailDto(
-                person.Id, person.Name, person.Version, null, person.FirstName, person.MiddleName, person.LastName);
-        }
-
-        private static void AddPartError(Dictionary<string, string[]> errors, string field, string? value)
-        {
-            if (value is not null && value.Trim().Length > Person.MaxNamePartLength)
-            {
-                errors[field] = [$"Must be at most {Person.MaxNamePartLength} characters."];
-            }
+            return PersonDtoMapper.ToDetail(person, detail: null);
         }
     }
 }

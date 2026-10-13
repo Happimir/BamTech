@@ -18,6 +18,36 @@ namespace StargateAPI.Controllers
             _mediator = mediator;
         }
 
+        /// <summary>People one page at a time, optionally filtered by a case-insensitive name prefix.</summary>
+        [HttpGet("")]
+        public async Task<IActionResult> GetPeople(
+            [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? name, CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(new GetPeople(page, pageSize, name), cancellationToken);
+            return this.ToActionResult(result, Ok);
+        }
+
+        /// <summary>Always creates a new person, even when a namesake exists. Repeating it creates another.</summary>
+        [HttpPost("")]
+        public async Task<IActionResult> CreatePerson([FromBody] CreatePersonDto request, CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(
+                new CreatePerson(request.Name, request.FirstName, request.MiddleName, request.LastName), cancellationToken);
+            return this.ToActionResult(result, person => Created($"/api/people/{person.Id}", person));
+        }
+
+        /// <summary>
+        /// Replaces the name fields; omitted parts become null. Requires the current version; a stale
+        /// version is a 409. Renaming never changes the person's ID or duty history.
+        /// </summary>
+        [HttpPut("{id:guid}")]
+        public async Task<IActionResult> UpdatePerson(Guid id, [FromBody] UpdatePersonDto request, CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(new UpdatePerson(
+                id, request.Name, request.FirstName, request.MiddleName, request.LastName, request.Version), cancellationToken);
+            return this.ToActionResult(result, Ok);
+        }
+
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetPerson(Guid id, CancellationToken cancellationToken)
         {

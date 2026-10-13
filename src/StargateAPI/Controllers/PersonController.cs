@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
+using StargateAPI.Business.Dtos;
 using StargateAPI.Business.Queries;
 
 namespace StargateAPI.Controllers
@@ -19,10 +20,31 @@ namespace StargateAPI.Controllers
             _mediator = mediator;
         }
 
+        /// <summary>
+        /// All people, one page at a time (default 25, maximum 100). Changed from the starter's
+        /// unbounded list; traverse pages to retrieve everyone. Same query as GET /api/people.
+        /// </summary>
         [HttpGet("")]
-        public async Task<IActionResult> GetPeople(CancellationToken cancellationToken)
+        public async Task<IActionResult> GetPeople(
+            [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? name, CancellationToken cancellationToken)
         {
-            return Ok(await _mediator.Send(new GetPeople(), cancellationToken));
+            var result = await _mediator.Send(new GetPeople(page, pageSize, name), cancellationToken);
+            return this.ToActionResult(result, Ok);
+        }
+
+        /// <summary>
+        /// Add or update a person by exact name: 201 when created, 200 when updated or unchanged.
+        /// Renaming requires expectedVersion; an ambiguous name is a 409 (use PUT /api/people/{id}).
+        /// </summary>
+        [HttpPut("by-name")]
+        public async Task<IActionResult> UpsertPersonByName(
+            [FromQuery] string? name, [FromBody] NameUpdateDto request, CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(
+                new UpsertPersonByName(name, request.Name, request.ExpectedVersion), cancellationToken);
+            return this.ToActionResult(result, upsert => upsert.Created
+                ? Created($"/api/people/{upsert.Person.Id}", upsert.Person)
+                : Ok(upsert.Person));
         }
 
         /// <summary>Exact name lookup without path-segment limitations (slashes, reserved words).</summary>
