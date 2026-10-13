@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-const adminPassword = process.env['E2E_ADMIN_PASSWORD'] ?? '';
-
-test.skip(!adminPassword, 'E2E_ADMIN_PASSWORD is not set');
+// The API seeds this fixed demo password in Development (see the README); override for other setups.
+const adminPassword = process.env['E2E_ADMIN_PASSWORD'] ?? 'Admin!2026';
 
 test('sign-in, protected read and sign-out work through the same-origin proxy', async ({
   page,

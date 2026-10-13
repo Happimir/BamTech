@@ -2,8 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 /**
  * End-to-end checks against the real API through the HTTPS dev server and proxy.
- * Prerequisites: the API is running (https launch profile), `npm start` is serving, and
- * E2E_ADMIN_PASSWORD holds the seeded admin password. See the repository README.
+ * Prerequisites: the API is running (https launch profile) with the Development demo users
+ * seeded, and `npm start` is serving. Set E2E_ADMIN_PASSWORD if you seeded your own password.
+ * See the repository README.
  */
 export default defineConfig({
   testDir: './e2e',

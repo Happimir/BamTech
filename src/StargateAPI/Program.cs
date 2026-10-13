@@ -67,7 +67,7 @@ var app = builder.Build();
 if (args.Contains(DemoUserSeeder.Command))
 {
     Environment.ExitCode = await DemoUserSeeder.RunAsync(
-        app.Services, app.Configuration, app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Setup"));
+        app.Services, app.Configuration, app.Environment, app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Setup"));
     return;
 }
 
