@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Dtos;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 
 namespace StargateAPI.Business.Queries
@@ -12,10 +13,12 @@ namespace StargateAPI.Business.Queries
     public class GetPersonDutiesHandler : IRequestHandler<GetPersonDuties, Result<PersonDutiesDto>>
     {
         private readonly StargateContext _context;
+        private readonly OperationContext _operation;
 
-        public GetPersonDutiesHandler(StargateContext context)
+        public GetPersonDutiesHandler(StargateContext context, OperationContext operation)
         {
             _context = context;
+            _operation = operation;
         }
 
         public async Task<Result<PersonDutiesDto>> Handle(GetPersonDuties request, CancellationToken cancellationToken)
@@ -34,6 +37,8 @@ namespace StargateAPI.Business.Queries
                 }
                 id = resolved.Value;
             }
+
+            _operation.PersonId = id;
 
             // One projection compiles to a single SQL statement (EF's default single-query mode),
             // so the summary and history come from the same database snapshot. Do not switch this

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 
 namespace StargateAPI.Controllers
@@ -44,6 +45,7 @@ namespace StargateAPI.Controllers
             }
 
             problem.Extensions["code"] = error.Code;
+            controller.HttpContext.RequestServices.GetService<OperationContext>()?.ErrorCode = error.Code;
             return new ObjectResult(problem) { StatusCode = status, ContentTypes = { ProblemJson } };
         }
     }

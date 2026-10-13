@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 using StargateAPI.Controllers;
 
@@ -28,6 +29,7 @@ builder.Services.AddControllers(options =>
             var factory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
             var problem = factory.CreateValidationProblemDetails(context.HttpContext, context.ModelState);
             problem.Extensions["code"] = ErrorCodes.Validation;
+            context.HttpContext.RequestServices.GetService<OperationContext>()?.ErrorCode = ErrorCodes.Validation;
             return new BadRequestObjectResult(problem) { ContentTypes = { ControllerBaseExtensions.ProblemJson } };
         };
     });
@@ -49,9 +51,14 @@ builder.Services.AddMediatR(cfg =>
 // Business "today" (UTC) for date rules; replaceable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 
+// Per-request logging facts shared by the HTTP boundary, handlers and exception handling.
+builder.Services.AddScoped<OperationContext>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+// Outermost: records one outcome per request after exception handling has produced the response.
+app.UseMiddleware<RequestOutcomeLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 

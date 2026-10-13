@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 
 namespace StargateAPI.Controllers
@@ -28,6 +29,13 @@ namespace StargateAPI.Controllers
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
             var (status, code, title) = Classify(exception);
+
+            // Preserve the failure for the request-outcome log even though the client gets a safe body.
+            if (httpContext.RequestServices.GetService<OperationContext>() is { } operation)
+            {
+                operation.ErrorCode = code;
+                operation.Exception = exception;
+            }
 
             if (status >= StatusCodes.Status500InternalServerError)
             {

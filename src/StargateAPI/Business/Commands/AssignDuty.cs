@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Domain;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Queries;
 using StargateAPI.Business.Results;
 
@@ -30,11 +31,13 @@ namespace StargateAPI.Business.Commands
 
         private readonly StargateContext _context;
         private readonly TimeProvider _timeProvider;
+        private readonly OperationContext _operation;
 
-        public AssignDutyHandler(StargateContext context, TimeProvider timeProvider)
+        public AssignDutyHandler(StargateContext context, TimeProvider timeProvider, OperationContext operation)
         {
             _context = context;
             _timeProvider = timeProvider;
+            _operation = operation;
         }
 
         public async Task<Result<AssignDutyResult>> Handle(AssignDuty request, CancellationToken cancellationToken)
@@ -62,6 +65,7 @@ namespace StargateAPI.Business.Commands
                 personId = resolved.Value;
             }
 
+            _operation.PersonId = personId;
             var person = await _context.People.SingleOrDefaultAsync(p => p.Id == personId, cancellationToken);
             if (person is null)
             {
@@ -92,14 +96,32 @@ namespace StargateAPI.Business.Commands
                 // EF's command ordering. Both saves commit or roll back together.
                 await _context.SaveChangesAsync(cancellationToken);
 
-                _context.AstronautDuties.Add(assignment.Value.NewDuty);
+                var newDuty = assignment.Value.NewDuty;
+                _context.AstronautDuties.Add(newDuty);
                 if (assignment.Value.NewDetail is { } newDetail)
                 {
                     _context.AstronautDetails.Add(newDetail);
                 }
+
+                // The audit commits with the change or not at all.
+                _operation.AstronautDutyId = newDuty.Id;
+                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
+                    _operation, "AssignDuty", _timeProvider.GetUtcNow(), person.Id, newDuty.Id,
+                    "Duty assigned.",
+                    LogContent.Changes(new
+                    {
+                        newDuty.DutyTitle,
+                        newDuty.Rank,
+                        newDuty.DutyStartDate,
+                        FirstAssignment = assignment.Value.NewDetail is not null,
+                        ClosedDutyId = assignment.Value.ClosedDuty?.Id,
+                        ClosedDutyEndDate = assignment.Value.ClosedDuty?.DutyEndDate,
+                        CareerEndDate = (state.Detail ?? assignment.Value.NewDetail)?.CareerEndDate
+                    })));
                 await _context.SaveChangesAsync(cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
+                _operation.MutationCommitted = true;
             }
             catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteExtendedErrorCode: SqliteConstraintUnique })
             {
