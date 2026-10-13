@@ -1,3 +1,4 @@
+<a class="skip-link" href="#main-content" (click)="skipToMainContent($event)">Skip to main content</a>
 @if (auth.isAuthenticated()) {
   <header>
     <mat-toolbar class="shell-bar">
@@ -17,6 +18,6 @@
     <p class="logout-error" role="alert">Sign-out failed. You are still signed in; try again.</p>
   }
 }
-<main class="content">
+<main id="main-content" class="content" #main>
   <router-outlet />
 </main>

@@ -72,3 +72,27 @@
   padding-inline: var(--acts-space-4);
   color: var(--acts-error);
 }
+
+// Visible only when focused by keyboard.
+.skip-link {
+  position: absolute;
+  top: var(--acts-space-2);
+  left: var(--acts-space-2);
+  z-index: 10;
+  padding: var(--acts-space-2) var(--acts-space-4);
+  border-radius: 8px;
+  background: var(--acts-surface);
+  color: var(--acts-primary);
+  font-weight: 600;
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
+}
+
+// Programmatic focus targets (main region, page headings) need no focus ring.
+.content:focus,
+.content :focus:is(h1) {
+  outline: none;
+}

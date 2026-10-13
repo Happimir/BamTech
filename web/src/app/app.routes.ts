@@ -1,5 +1,8 @@
 import { Routes } from '@angular/router';
-import { anonymousOnlyGuard, authenticatedGuard } from './core/auth/auth.guards';
+import { anonymousOnlyGuard, authenticatedGuard, capabilityGuard } from './core/auth/auth.guards';
+
+/** Guards are navigation UX; the API authorizes every request. */
+const canReadPeople = [authenticatedGuard, capabilityGuard('People.Read')];
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'people' },
@@ -18,15 +21,27 @@ export const routes: Routes = [
   {
     path: 'people',
     title: 'People · ACTS',
-    canActivate: [authenticatedGuard],
+    canActivate: canReadPeople,
     loadComponent: () => import('./features/people/people-page').then((m) => m.PeoplePage),
   },
   {
     path: 'people/:id',
     title: 'Person · ACTS',
-    canActivate: [authenticatedGuard],
+    canActivate: canReadPeople,
     loadComponent: () =>
       import('./features/person-detail/person-detail-page').then((m) => m.PersonDetailPage),
   },
-  { path: '**', redirectTo: 'people' },
+  {
+    path: 'forbidden',
+    title: 'Access denied · ACTS',
+    canActivate: [authenticatedGuard],
+    loadComponent: () =>
+      import('./features/status-pages/forbidden-page').then((m) => m.ForbiddenPage),
+  },
+  {
+    path: '**',
+    title: 'Page not found · ACTS',
+    loadComponent: () =>
+      import('./features/status-pages/not-found-page').then((m) => m.NotFoundPage),
+  },
 ];
