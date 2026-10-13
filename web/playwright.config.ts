@@ -8,6 +8,7 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   testMatch: '**/*.e2e.ts',
   fullyParallel: false,
   workers: 1,

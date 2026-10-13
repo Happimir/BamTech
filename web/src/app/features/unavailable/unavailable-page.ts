@@ -10,13 +10,13 @@ import { safeReturnUrl } from '../../core/navigation/return-url';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatButtonModule],
   template: `
-    <main class="unavailable">
+    <div class="unavailable">
       <h1>ACTS is unavailable</h1>
       <p role="status">
         {{ retrying() ? 'Checking the service…' : 'The service could not be reached. Your session was not signed out.' }}
       </p>
       <button mat-flat-button type="button" [disabled]="retrying()" (click)="retry()">Retry</button>
-    </main>
+    </div>
   `,
   styles: `
     .unavailable {

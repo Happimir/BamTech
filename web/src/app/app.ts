@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { Router, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthStore } from './core/auth/auth.store';
 
 @Component({
   selector: 'acts-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, MatButtonModule, MatToolbarModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatButtonModule, MatToolbarModule],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
