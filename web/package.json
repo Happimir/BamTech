@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "certs": "dotnet dev-certs https --export-path .certs/localhost.pem --format pem --no-password",
+    "certs": "node -e \"require('fs').mkdirSync('.certs', { recursive: true })\" && dotnet dev-certs https --export-path .certs/localhost.pem --format pem --no-password",
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
