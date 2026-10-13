@@ -82,7 +82,7 @@
               <li>
                 <mat-card appearance="outlined" class="person-card">
                   <div class="card-heading">
-                    <a class="person-name" [routerLink]="['/people', person.id]">{{ person.name }}</a>
+                    <a class="person-name" [routerLink]="['/people', person.id]" [state]="returnState()">{{ person.name }}</a>
                     <acts-status-badge [status]="person.status" />
                   </div>
                   @if (person.namesakeHint) {
@@ -94,7 +94,7 @@
                   } @else {
                     <p class="secondary">No duty assignments</p>
                   }
-                  <a mat-stroked-button class="card-action" [routerLink]="['/people', person.id]">
+                  <a mat-stroked-button class="card-action" [routerLink]="['/people', person.id]" [state]="returnState()">
                     View details<span class="visually-hidden"> for {{ person.name }}</span>
                   </a>
                 </mat-card>
@@ -107,7 +107,7 @@
             <ng-container matColumnDef="name">
               <th mat-header-cell *matHeaderCellDef scope="col">Name</th>
               <td mat-cell *matCellDef="let person">
-                <a class="person-name" [routerLink]="['/people', person.id]">{{ person.name }}</a>
+                <a class="person-name" [routerLink]="['/people', person.id]" [state]="returnState()">{{ person.name }}</a>
                 @if (person.namesakeHint) {
                   <span class="secondary namesake-id">ID {{ person.namesakeHint }}</span>
                 }
@@ -138,7 +138,7 @@
             <ng-container matColumnDef="view">
               <th mat-header-cell *matHeaderCellDef scope="col"><span class="visually-hidden">Actions</span></th>
               <td mat-cell *matCellDef="let person" class="view-cell">
-                <a mat-button [routerLink]="['/people', person.id]">
+                <a mat-button [routerLink]="['/people', person.id]" [state]="returnState()">
                   View<span class="visually-hidden"> details for {{ person.name }}</span>
                 </a>
               </td>
