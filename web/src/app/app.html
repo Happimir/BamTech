@@ -1,0 +1,14 @@
+@if (auth.isAuthenticated()) {
+  <mat-toolbar class="shell-bar">
+    <span class="wordmark">ACTS</span>
+    <span class="spacer"></span>
+    <span class="account">{{ auth.user()?.userName }} · {{ auth.user()?.roles?.join(', ') }}</span>
+    <button mat-button type="button" [disabled]="loggingOut()" (click)="logout()">Log out</button>
+  </mat-toolbar>
+  @if (logoutFailed()) {
+    <p class="logout-error" role="alert">Sign-out failed. You are still signed in; try again.</p>
+  }
+}
+<div class="content">
+  <router-outlet />
+</div>

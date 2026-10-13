@@ -7,6 +7,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 ## Prerequisites
 
 - .NET 10 SDK (10.0.100 or later; see `global.json`)
+- Node.js 24.18 or later with npm 11 (for the Angular UI in `web/`)
 
 There is no database server to install: the API uses a local SQLite file.
 
@@ -16,21 +17,46 @@ There is no database server to install: the API uses a local SQLite file.
 dotnet tool restore                               # installs the pinned dotnet-ef locally
 dotnet build                                      # restores packages; dotnet ef needs them
 dotnet ef database update --project src/StargateAPI
-
-# Demo accounts: choose passwords (min. 6 chars with upper, lower, digit and symbol).
-# They are kept in your local user-secrets store, never in the repository.
-dotnet user-secrets set "DemoUsers:AdminPassword" "<admin password>" --project src/StargateAPI
-dotnet user-secrets set "DemoUsers:ReaderPassword" "<reader password>" --project src/StargateAPI
 dotnet run --project src/StargateAPI --launch-profile https -- seed-demo-users
 
 dotnet run --project src/StargateAPI --launch-profile https
 ```
 
-Seeding is idempotent: re-running it adds missing roles or accounts and leaves existing passwords unchanged. Environment variables `DemoUsers__AdminPassword` / `DemoUsers__ReaderPassword` work instead of user-secrets.
+In Development (the `https` launch profile), seeding creates fixed demo accounts:
+
+| Username | Password | Role |
+| --- | --- | --- |
+| `admin` | `Admin!2026` | Admin |
+| `reader` | `Reader!2026` | Reader |
+
+These passwords are public and for local demos only. **They are never used outside Development:** any other environment must supply `DemoUsers:AdminPassword` and `DemoUsers:ReaderPassword` (user-secrets or the environment variables `DemoUsers__AdminPassword` / `DemoUsers__ReaderPassword`), or seeding refuses. Configured values also override the demo passwords in Development.
+
+Seeding is idempotent: re-running it adds missing roles or accounts and leaves existing passwords unchanged. To switch an existing database to different passwords, delete `starbase.db`, run `dotnet ef database update` and seed again.
 
 - The database file is `src/StargateAPI/starbase.db`. A relative `Data Source` in `ConnectionStrings:StarbaseApiDatabase` resolves against the API project folder, whichever folder you start it from.
 - Swagger UI is available in Development at `https://localhost:7204/swagger`.
 - **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run `dotnet ef database update` again.
+
+## Run the web UI
+
+The Angular app (`web/`) is served over HTTPS and proxies `/api` and `/auth` to the API on the same origin, so the Secure, SameSite=Strict cookies work without CORS. Start the API first (above), then:
+
+```bash
+cd web
+npm ci
+npm run certs        # exports the ASP.NET development certificate to web/.certs (git-ignored)
+npm start            # https://localhost:4200
+```
+
+If the browser warns about the certificate, trust it once with `dotnet dev-certs https --trust`. The same self-signed localhost certificate serves both the API and the UI.
+
+```bash
+npm test             # unit tests (Vitest)
+npm run build        # production build to web/dist
+# End-to-end check against the running API and dev server (uses your installed Chrome).
+# Uses the Development admin password; set E2E_ADMIN_PASSWORD if you seeded your own.
+npm run e2e
+```
 
 ## Sign-in and permissions
 
@@ -52,7 +78,7 @@ Signing in with curl (`-k` accepts the local development certificate):
 curl -k -c jar -b jar https://localhost:7204/auth/antiforgery
 XSRF=$(awk '/XSRF-TOKEN/ {print $7}' jar)
 curl -k -c jar -b jar -H "X-XSRF-TOKEN: $XSRF" -H "Content-Type: application/json" \
-     -d '{"userName":"admin","password":"<admin password>"}' https://localhost:7204/auth/login
+     -d '{"userName":"admin","password":"Admin!2026"}' https://localhost:7204/auth/login
 curl -k -b jar "https://localhost:7204/api/people?pageSize=10"
 ```
 

@@ -6,8 +6,10 @@ namespace StargateAPI.Security
 {
     /// <summary>
     /// Idempotently creates the Admin/Reader roles and the "admin"/"reader" demo accounts.
-    /// Passwords come only from configuration (user-secrets or environment variables), never from
-    /// source. Existing accounts keep their passwords; only missing roles are added.
+    /// Passwords come from configuration (user-secrets or environment variables). In Development
+    /// only, unset passwords fall back to the fixed, documented demo passwords below so a local demo
+    /// always uses known credentials; every other environment must configure its own.
+    /// Existing accounts keep their passwords; only missing roles are added.
     /// Run with: dotnet run --project src/StargateAPI -- seed-demo-users
     /// </summary>
     public static class DemoUserSeeder
@@ -16,16 +18,43 @@ namespace StargateAPI.Security
         public const string AdminUserName = "admin";
         public const string ReaderUserName = "reader";
 
-        /// <summary>Command-line entry point. Returns a process exit code.</summary>
-        public static async Task<int> RunAsync(IServiceProvider services, IConfiguration configuration, ILogger logger)
+        // Public by design: local demo credentials, never used outside Development.
+        public const string DevelopmentAdminPassword = "Admin!2026";
+        public const string DevelopmentReaderPassword = "Reader!2026";
+
+        /// <summary>
+        /// The passwords to seed: configured values first, then the fixed demo passwords only in
+        /// Development. Null when a password is missing outside Development.
+        /// </summary>
+        public static (string Admin, string Reader)? ResolvePasswords(IConfiguration configuration, IHostEnvironment environment)
         {
             var adminPassword = configuration["DemoUsers:AdminPassword"];
             var readerPassword = configuration["DemoUsers:ReaderPassword"];
+            if (environment.IsDevelopment())
+            {
+                adminPassword = string.IsNullOrWhiteSpace(adminPassword) ? DevelopmentAdminPassword : adminPassword;
+                readerPassword = string.IsNullOrWhiteSpace(readerPassword) ? DevelopmentReaderPassword : readerPassword;
+            }
             if (string.IsNullOrWhiteSpace(adminPassword) || string.IsNullOrWhiteSpace(readerPassword))
             {
-                logger.LogError("Set DemoUsers:AdminPassword and DemoUsers:ReaderPassword (user-secrets or environment variables) first.");
+                return null;
+            }
+            return (adminPassword, readerPassword);
+        }
+
+        /// <summary>Command-line entry point. Returns a process exit code.</summary>
+        public static async Task<int> RunAsync(IServiceProvider services, IConfiguration configuration, IHostEnvironment environment, ILogger logger)
+        {
+            var passwords = ResolvePasswords(configuration, environment);
+            if (passwords is null)
+            {
+                logger.LogError(
+                    "Set DemoUsers:AdminPassword and DemoUsers:ReaderPassword (user-secrets or environment variables) first. " +
+                    "The built-in demo passwords apply only in Development; this environment is {Environment}.",
+                    environment.EnvironmentName);
                 return 1;
             }
+            var (adminPassword, readerPassword) = passwords.Value;
 
             await using var scope = services.CreateAsyncScope();
             var context = scope.ServiceProvider.GetRequiredService<StargateContext>();

@@ -1,0 +1,27 @@
+@use '@angular/material' as mat;
+
+// Minimal theme for the slice 5b integration check. The centralized ACTS tokens
+// (_tokens.scss / _material-theme.scss, values from the visual spec) replace this.
+html {
+  color-scheme: light;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$cyan-palette,
+        theme-type: light,
+      ),
+      typography: (
+        plain-family: (Roboto, system-ui, sans-serif),
+        brand-family: (Roboto, system-ui, sans-serif),
+      ),
+      density: 0,
+    )
+  );
+}
+
+body {
+  margin: 0;
+  background: #f4f6f9;
+  color: #172b42;
+  font: var(--mat-sys-body-large);
+}
