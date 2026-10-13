@@ -1,0 +1,167 @@
+<header class="page-header">
+  <h1>People</h1>
+  <p class="purpose">Find a person and review their astronaut career.</p>
+</header>
+
+<section class="directory" aria-labelledby="results-heading">
+  <form class="search" role="search" [formRoot]="searchForm">
+    <mat-form-field class="search-field" appearance="outline">
+      <mat-label>Name</mat-label>
+      <input matInput [formField]="searchForm.name" autocomplete="off" />
+      @if (searchForm.name().value()) {
+        <button mat-button matSuffix type="button" (click)="clearSearch()">
+          Clear<span class="visually-hidden"> search</span>
+        </button>
+      }
+      <mat-hint>Search by the beginning of a name</mat-hint>
+      @for (error of searchForm.name().errors(); track error.kind) {
+        <mat-error>{{ error.message }}</mat-error>
+      }
+    </mat-form-field>
+    <button class="search-button" mat-flat-button type="submit">Search</button>
+  </form>
+
+  <div class="results-header">
+    <h2 id="results-heading" class="visually-hidden">Results</h2>
+    <p class="summary tabular-numbers" role="status">{{ summary() }}</p>
+    @if (store.query().name) {
+      <button mat-button type="button" (click)="clearSearch()">Clear search</button>
+    }
+  </div>
+  <div class="progress-slot">
+    @if (store.isRefreshing()) {
+      <mat-progress-bar mode="indeterminate" aria-label="Updating results" />
+    }
+  </div>
+
+  @switch (store.view()) {
+    @case ('loading') {
+      <div class="skeleton" aria-hidden="true">
+        @for (row of skeletonRows; track row) {
+          <div class="skeleton-row">
+            <span class="skeleton-bar skeleton-bar--wide"></span>
+            <span class="skeleton-bar"></span>
+            <span class="skeleton-bar"></span>
+          </div>
+        }
+      </div>
+    }
+    @case ('error') {
+      <div class="notice notice--error" role="alert">
+        <p>
+          People could not be loaded.
+          @if (store.isUnavailable()) {
+            The service is unavailable right now.
+          }
+        </p>
+        <button mat-flat-button type="button" (click)="store.reload()">Retry</button>
+      </div>
+    }
+    @case ('empty') {
+      <div class="notice">
+        <p>No people have been added yet.</p>
+      </div>
+    }
+    @case ('no-matches') {
+      <div class="notice">
+        <p>No people have names starting “{{ store.query().name }}”.</p>
+        <button mat-stroked-button type="button" (click)="clearSearch()">Clear search</button>
+      </div>
+    }
+    @case ('past-end') {
+      <div class="notice">
+        <p>This page is past the end of the results.</p>
+        <button mat-stroked-button type="button" (click)="store.goToLastPage()">Go to last page</button>
+      </div>
+    }
+    @case ('results') {
+      <div class="results" [class.stale]="store.isRefreshing()" [attr.aria-busy]="store.isRefreshing()" [inert]="store.isRefreshing()">
+        @if (isNarrow()) {
+          <ul class="cards">
+            @for (person of rows(); track person.id) {
+              <li>
+                <mat-card appearance="outlined" class="person-card">
+                  <div class="card-heading">
+                    <a class="person-name" [routerLink]="['/people', person.id]">{{ person.name }}</a>
+                    <acts-status-badge [status]="person.status" />
+                  </div>
+                  @if (person.namesakeHint) {
+                    <p class="secondary">ID {{ person.namesakeHint }}</p>
+                  }
+                  @if (person.dutyTitle) {
+                    <p class="card-line">{{ person.rank }} · {{ person.dutyTitle }}</p>
+                    <p class="secondary tabular-numbers">Since {{ person.since }}</p>
+                  } @else {
+                    <p class="secondary">No duty assignments</p>
+                  }
+                  <a mat-stroked-button class="card-action" [routerLink]="['/people', person.id]">
+                    View details<span class="visually-hidden"> for {{ person.name }}</span>
+                  </a>
+                </mat-card>
+              </li>
+            }
+          </ul>
+        } @else {
+          <table mat-table [dataSource]="rows()" class="people-table">
+            <caption class="visually-hidden">People, sorted by name</caption>
+            <ng-container matColumnDef="name">
+              <th mat-header-cell *matHeaderCellDef scope="col">Name</th>
+              <td mat-cell *matCellDef="let person">
+                <a class="person-name" [routerLink]="['/people', person.id]">{{ person.name }}</a>
+                @if (person.namesakeHint) {
+                  <span class="secondary namesake-id">ID {{ person.namesakeHint }}</span>
+                }
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef scope="col">Status</th>
+              <td mat-cell *matCellDef="let person"><acts-status-badge [status]="person.status" /></td>
+            </ng-container>
+            <ng-container matColumnDef="rank">
+              <th mat-header-cell *matHeaderCellDef scope="col">Rank</th>
+              <td mat-cell *matCellDef="let person">
+                @if (person.rank) { {{ person.rank }} } @else { <span aria-hidden="true">—</span><span class="visually-hidden">None</span> }
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="duty">
+              <th mat-header-cell *matHeaderCellDef scope="col">Current duty</th>
+              <td mat-cell *matCellDef="let person">
+                @if (person.dutyTitle) { {{ person.dutyTitle }} } @else { <span aria-hidden="true">—</span><span class="visually-hidden">None</span> }
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="since">
+              <th mat-header-cell *matHeaderCellDef scope="col">Since</th>
+              <td mat-cell *matCellDef="let person" class="tabular-numbers nowrap">
+                @if (person.since) { {{ person.since }} } @else { <span aria-hidden="true">—</span><span class="visually-hidden">None</span> }
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="view">
+              <th mat-header-cell *matHeaderCellDef scope="col"><span class="visually-hidden">Actions</span></th>
+              <td mat-cell *matCellDef="let person" class="view-cell">
+                <a mat-button [routerLink]="['/people', person.id]">
+                  View<span class="visually-hidden"> details for {{ person.name }}</span>
+                </a>
+              </td>
+            </ng-container>
+            <tr mat-header-row *matHeaderRowDef="columns"></tr>
+            <tr mat-row *matRowDef="let row; columns: columns"></tr>
+          </table>
+        }
+      </div>
+    }
+  }
+
+  @if (store.result(); as result) {
+    @if (result.totalCount > 0) {
+      <mat-paginator
+        class="paginator"
+        aria-label="Select page of people"
+        [length]="result.totalCount"
+        [pageIndex]="store.query().page - 1"
+        [pageSize]="store.query().pageSize"
+        [pageSizeOptions]="pageSizeOptions"
+        (page)="onPage($event)"
+      />
+    }
+  }
+</section>
