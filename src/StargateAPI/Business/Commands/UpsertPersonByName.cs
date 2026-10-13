@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Domain;
 using StargateAPI.Business.Dtos;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 
 namespace StargateAPI.Business.Commands
@@ -27,10 +28,14 @@ namespace StargateAPI.Business.Commands
     public class UpsertPersonByNameHandler : IRequestHandler<UpsertPersonByName, Result<UpsertPersonResult>>
     {
         private readonly StargateContext _context;
+        private readonly TimeProvider _timeProvider;
+        private readonly OperationContext _operation;
 
-        public UpsertPersonByNameHandler(StargateContext context)
+        public UpsertPersonByNameHandler(StargateContext context, TimeProvider timeProvider, OperationContext operation)
         {
             _context = context;
+            _timeProvider = timeProvider;
+            _operation = operation;
         }
 
         public async Task<Result<UpsertPersonResult>> Handle(UpsertPersonByName request, CancellationToken cancellationToken)
@@ -74,12 +79,18 @@ namespace StargateAPI.Business.Commands
 
                 var created = Person.Create(requestedName);
                 _context.People.Add(created);
+                _operation.PersonId = created.Id;
+                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
+                    _operation, "UpsertPersonByName", _timeProvider.GetUtcNow(), created.Id, dutyId: null,
+                    "Person created by name."));
                 await _context.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
+                _operation.MutationCommitted = true;
                 return new UpsertPersonResult(PersonDtoMapper.ToDetail(created, detail: null), Created: true);
             }
 
             var person = matches[0];
+            _operation.PersonId = person.Id;
             var nameChanges = person.Name != requestedName;
 
             if (request.ExpectedVersion is { } expected && expected != person.Version)
@@ -93,14 +104,20 @@ namespace StargateAPI.Business.Commands
                     "Changing a name requires expectedVersion. Read the person first and send its version.");
             }
 
-            if (person.ChangeDisplayName(requestedName))
+            var renamed = person.ChangeDisplayName(requestedName);
+            if (renamed)
             {
+                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
+                    _operation, "UpsertPersonByName", _timeProvider.GetUtcNow(), person.Id, dutyId: null,
+                    "Person renamed by name; structured name parts cleared.",
+                    LogContent.Changes(new { ChangedFields = new[] { "name", "firstName", "middleName", "lastName" } })));
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
             var detail = await _context.AstronautDetails.AsNoTracking()
                 .SingleOrDefaultAsync(d => d.PersonId == person.Id, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            _operation.MutationCommitted = renamed;
 
             return new UpsertPersonResult(PersonDtoMapper.ToDetail(person, detail), Created: false);
         }

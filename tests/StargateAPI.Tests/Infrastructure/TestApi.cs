@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +36,7 @@ public sealed class TestApi : IAsyncDisposable
 
     public IServiceProvider Services => _factory.Services;
 
-    public static async Task<TestApi> CreateAsync(bool useFileDatabase = false)
+    public static async Task<TestApi> CreateAsync(bool useFileDatabase = false, Action<IServiceCollection>? configureServices = null)
     {
         SqliteConnection? keepAlive = null;
         string? databaseFile = null;
@@ -56,6 +57,10 @@ public sealed class TestApi : IAsyncDisposable
         {
             builder.UseEnvironment("Testing");
             builder.UseSetting("ConnectionStrings:StarbaseApiDatabase", connectionString);
+            if (configureServices is not null)
+            {
+                builder.ConfigureTestServices(configureServices);
+            }
         });
 
         var api = new TestApi(keepAlive, databaseFile, factory);
@@ -83,6 +88,24 @@ public sealed class TestApi : IAsyncDisposable
         await context.SaveChangesAsync();
         return person.Id;
     });
+
+    /// <summary>
+    /// All process log rows, oldest first. Waits briefly for the request-outcome row, which the
+    /// boundary middleware writes after the response has been produced.
+    /// </summary>
+    public async Task<List<ProcessLog>> ProcessLogsAsync(int expectedOutcomes)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var logs = await WithContextAsync(context => context.ProcessLogs.AsNoTracking()
+                .OrderBy(l => l.OccurredAtUtc).ThenBy(l => l.Id).ToListAsync());
+            if (logs.Count(l => l.Phase == ProcessLogPhase.RequestOutcome) >= expectedOutcomes || attempt >= 40)
+            {
+                return logs;
+            }
+            await Task.Delay(50);
+        }
+    }
 
     /// <summary>Posts a duty using the legacy name-based body shape, which the redesign keeps.</summary>
     public Task<HttpResponseMessage> PostDutyAsync(string name, string rank, string dutyTitle, string dutyStartDate) =>

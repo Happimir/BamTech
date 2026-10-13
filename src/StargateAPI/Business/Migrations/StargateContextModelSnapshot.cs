@@ -146,6 +146,110 @@ namespace StargateAPI.Migrations
                         });
                 });
 
+            modelBuilder.Entity("StargateAPI.Business.Data.ProcessLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActorIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActorSubject")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AstronautDutyId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChangesJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DurationMilliseconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExceptionDetails")
+                        .HasMaxLength(16000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExceptionType")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("HttpStatusCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAtUtc")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PersonId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceSystem")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc", "Id");
+
+                    b.HasIndex("OperationId", "Phase")
+                        .IsUnique();
+
+                    b.HasIndex("PersonId", "OccurredAtUtc")
+                        .HasFilter("\"PersonId\" IS NOT NULL");
+
+                    b.HasIndex("TraceId", "OccurredAtUtc");
+
+                    b.ToTable("ProcessLog", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProcessLog_Audit_Succeeded", "\"Phase\" <> 'MutationAudit' OR \"Outcome\" = 'Succeeded'");
+
+                            t.HasCheckConstraint("CK_ProcessLog_Duration", "\"DurationMilliseconds\" IS NULL OR \"DurationMilliseconds\" >= 0");
+
+                            t.HasCheckConstraint("CK_ProcessLog_HttpStatus", "\"HttpStatusCode\" IS NULL OR \"HttpStatusCode\" BETWEEN 100 AND 599");
+
+                            t.HasCheckConstraint("CK_ProcessLog_Lengths", "length(\"TraceId\") <= 64 AND length(\"Operation\") <= 128 AND length(\"Message\") <= 2048 AND (\"ErrorCode\" IS NULL OR length(\"ErrorCode\") <= 128) AND (\"ExceptionType\" IS NULL OR length(\"ExceptionType\") <= 512) AND (\"ExceptionDetails\" IS NULL OR length(\"ExceptionDetails\") <= 16000) AND (\"ChangesJson\" IS NULL OR length(\"ChangesJson\") <= 8000)");
+
+                            t.HasCheckConstraint("CK_ProcessLog_Outcome", "\"Outcome\" IN ('Succeeded', 'Rejected', 'Failed', 'Cancelled')");
+
+                            t.HasCheckConstraint("CK_ProcessLog_Phase", "\"Phase\" IN ('MutationAudit', 'RequestOutcome')");
+                        });
+                });
+
             modelBuilder.Entity("StargateAPI.Business.Data.AstronautDetail", b =>
                 {
                     b.HasOne("StargateAPI.Business.Data.Person", "Person")

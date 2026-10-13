@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Dtos;
+using StargateAPI.Business.Logging;
 using StargateAPI.Business.Results;
 
 namespace StargateAPI.Business.Queries
@@ -12,10 +13,12 @@ namespace StargateAPI.Business.Queries
     public class GetPersonHandler : IRequestHandler<GetPerson, Result<PersonDetailDto>>
     {
         private readonly StargateContext _context;
+        private readonly OperationContext _operation;
 
-        public GetPersonHandler(StargateContext context)
+        public GetPersonHandler(StargateContext context, OperationContext operation)
         {
             _context = context;
+            _operation = operation;
         }
 
         public async Task<Result<PersonDetailDto>> Handle(GetPerson request, CancellationToken cancellationToken)
@@ -34,6 +37,8 @@ namespace StargateAPI.Business.Queries
                 }
                 id = resolved.Value;
             }
+
+            _operation.PersonId = id;
 
             var person = await _context.People
                 .AsNoTracking()
