@@ -1,0 +1,124 @@
+@use '@angular/material' as mat;
+@use 'tokens';
+
+:host {
+  display: block;
+}
+
+// A slim version of the signed-in shell bar, so the landing page reads as the same product.
+.landing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  padding-inline: var(--acts-space-4);
+  background: var(--acts-navigation);
+  color: var(--acts-on-navigation);
+
+  @include mat.button-overrides(
+    (
+      text-label-text-color: #fff,
+      text-state-layer-color: #fff,
+      text-ripple-color: rgb(255 255 255 / 0.2),
+    )
+  );
+
+  @include tokens.from(tablet) {
+    padding-inline: var(--acts-space-6);
+  }
+}
+
+.wordmark {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.landing {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--acts-space-8) var(--acts-space-4);
+
+  @include tokens.from(tablet) {
+    padding-inline: var(--acts-space-6);
+  }
+}
+
+.intro {
+  max-width: 680px;
+}
+
+.eyebrow {
+  margin: 0 0 var(--acts-space-2);
+  color: var(--acts-primary);
+  font: var(--mat-sys-label-large);
+  font-weight: 600;
+}
+
+h1 {
+  margin: 0;
+  font: var(--mat-sys-display-small);
+  font-weight: 600;
+
+  @media (max-width: 599.98px) {
+    font: var(--mat-sys-headline-medium);
+    font-weight: 600;
+  }
+}
+
+.lead {
+  margin: var(--acts-space-4) 0 var(--acts-space-6);
+  color: var(--acts-text-secondary);
+  font: var(--mat-sys-body-large);
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.cta {
+  height: 48px;
+  padding-inline: var(--acts-space-6);
+}
+
+.capabilities ul {
+  display: grid;
+  gap: var(--acts-space-4);
+  margin: var(--acts-space-8) 0;
+  padding: 0;
+  list-style: none;
+
+  @include tokens.from(desktop) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.capability {
+  padding: var(--acts-space-6);
+  border: 1px solid var(--acts-border);
+  border-top: 4px solid var(--acts-primary);
+  border-radius: var(--acts-radius-filter);
+  background: var(--acts-surface);
+
+  h3 {
+    margin: 0 0 var(--acts-space-2);
+    font: var(--mat-sys-title-medium);
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    color: var(--acts-text-secondary);
+  }
+}
+
+.access {
+  max-width: 680px;
+
+  h2 {
+    margin: 0 0 var(--acts-space-2);
+    font: var(--mat-sys-title-large);
+  }
+
+  p {
+    margin: 0;
+    color: var(--acts-text-secondary);
+  }
+}

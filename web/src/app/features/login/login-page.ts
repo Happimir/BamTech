@@ -4,7 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthStore, LoginOutcome } from '../../core/auth/auth.store';
 import { safeReturnUrl } from '../../core/navigation/return-url';
 
@@ -18,7 +18,7 @@ const FAILURE_MESSAGES: Record<Exclude<LoginOutcome, 'signed-in'>, string> = {
 @Component({
   selector: 'acts-login-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormRoot, FormField, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule],
+  imports: [FormRoot, FormField, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule, RouterLink],
   templateUrl: './login-page.html',
   styleUrl: './login-page.scss',
 })

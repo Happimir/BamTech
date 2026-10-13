@@ -92,7 +92,7 @@
 }
 
 // Programmatic focus targets (main region, page headings) need no focus ring.
-.content:focus,
-.content :focus:is(h1) {
+#main-content:focus,
+#main-content :focus:is(h1) {
   outline: none;
 }

@@ -41,7 +41,7 @@ test('sign-in, protected read and sign-out work through the same-origin proxy', 
   // Sign-out revokes server-side; a replayed copy of the old session cookie is rejected
   // and the app returns to sign-in instead of showing protected data.
   await page.getByRole('button', { name: 'Log out' }).click();
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/$/);
   await context.addCookies([session!]);
   const replayed = page.waitForResponse((r) => r.url().includes('/auth/me'));
   await page.goto('/people');

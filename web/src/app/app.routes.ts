@@ -5,7 +5,15 @@ import { anonymousOnlyGuard, authenticatedGuard, capabilityGuard } from './core/
 const canReadPeople = [authenticatedGuard, capabilityGuard('People.Read')];
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'people' },
+  {
+    path: '',
+    pathMatch: 'full',
+    title: 'ACTS · Astronaut Career Tracking System',
+    // Full-width page with its own header; signed-in visitors go straight to the directory.
+    data: { fullBleed: true },
+    canActivate: [anonymousOnlyGuard],
+    loadComponent: () => import('./features/landing/landing-page').then((m) => m.LandingPage),
+  },
   {
     path: 'login',
     title: 'Sign in · ACTS',
