@@ -1,0 +1,93 @@
+// ACTS design tokens (visual specification 08). The single source of palette, spacing, shape
+// and layout values.
+//
+// - Global styles emit these once as `--acts-*` custom properties (see `custom-properties`).
+// - Component SCSS reads colours through the custom properties, e.g.
+//   `color: var(--acts-text-secondary)`, and uses the Sass helpers below for layout only:
+//   `@use 'tokens'; @include tokens.from(tablet) { ... }`.
+// - Do not repeat hex values in component styles.
+
+@use 'sass:map';
+
+// Palette inputs
+$navy: #14283f;
+$canvas: #f4f6f9;
+$surface: #ffffff;
+$text: #172b42;
+$text-secondary: #526176;
+$primary: #006b65;
+$on-primary: #ffffff;
+$border: #dce3ea;
+
+$status-active-background: #d9f2ee;
+$status-active-text: #00504b;
+$status-retired-background: #e4e8ee;
+$status-retired-text: #364354;
+$status-unassigned-border: #8794a6;
+$status-unassigned-text: #3f4c5d;
+
+$skeleton: #e6ebf0;
+
+$font-family: (Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif);
+
+// Spacing: 4px unit, 8/12/16/24/32 rhythm
+$space: (
+  1: 4px,
+  2: 8px,
+  3: 12px,
+  4: 16px,
+  6: 24px,
+  8: 32px,
+);
+
+$radius-card: 16px;
+$radius-filter: 12px;
+
+$content-max-width: 1200px;
+
+$breakpoints: (
+  tablet: 600px,
+  desktop: 1024px,
+);
+
+@function space($step) {
+  @return map.get($space, $step);
+}
+
+/// Styles for viewports at least as wide as the named breakpoint.
+@mixin from($breakpoint) {
+  @media (min-width: map.get($breakpoints, $breakpoint)) {
+    @content;
+  }
+}
+
+/// Emits the semantic custom properties. Included once, from styles.scss.
+@mixin custom-properties {
+  --acts-navigation: #{$navy};
+  --acts-on-navigation: #ffffff;
+  --acts-canvas: #{$canvas};
+  --acts-surface: #{$surface};
+  --acts-text: #{$text};
+  --acts-text-secondary: #{$text-secondary};
+  --acts-primary: #{$primary};
+  --acts-on-primary: #{$on-primary};
+  --acts-border: #{$border};
+  --acts-error: var(--mat-sys-error);
+
+  --acts-status-active-background: #{$status-active-background};
+  --acts-status-active-text: #{$status-active-text};
+  --acts-status-retired-background: #{$status-retired-background};
+  --acts-status-retired-text: #{$status-retired-text};
+  --acts-status-unassigned-border: #{$status-unassigned-border};
+  --acts-status-unassigned-text: #{$status-unassigned-text};
+
+  --acts-skeleton: #{$skeleton};
+
+  @each $step, $value in $space {
+    --acts-space-#{$step}: #{$value};
+  }
+
+  --acts-radius-card: #{$radius-card};
+  --acts-radius-filter: #{$radius-filter};
+  --acts-content-max-width: #{$content-max-width};
+}

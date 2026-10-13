@@ -1,26 +1,33 @@
 @use '@angular/material' as mat;
+@use 'tokens';
 
 .shell-bar {
-  gap: 16px;
-  // The toolbar's own tokens: its buttons take their label colour from container-text-color,
-  // so setting `color` alone leaves them dark on the navy bar.
-  @include mat.toolbar-overrides(
-    (
-      container-background-color: #14283f,
-      container-text-color: #fff,
-    )
-  );
+  gap: var(--acts-space-2);
+  padding-inline: var(--acts-space-4);
+
+  // Hover and ripple suit the navy bar; label colour comes from the toolbar theme tokens.
   @include mat.button-overrides(
     (
       text-state-layer-color: #fff,
       text-ripple-color: rgb(255 255 255 / 0.2),
     )
   );
+
+  @include tokens.from(tablet) {
+    padding-inline: var(--acts-space-6);
+  }
 }
 
 .wordmark {
+  margin-inline-end: var(--acts-space-4);
   font-weight: 600;
   letter-spacing: 0.08em;
+}
+
+.nav-active {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .spacer {
@@ -28,16 +35,40 @@
 }
 
 .account {
-  font-size: 0.875rem;
+  display: none;
+  font: var(--mat-sys-body-medium);
+
+  @include tokens.from(tablet) {
+    display: inline;
+  }
+}
+
+.role {
+  margin-inline-start: var(--acts-space-2);
+  padding: 2px var(--acts-space-2);
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 999px;
+  font: var(--mat-sys-label-medium);
 }
 
 .content {
-  max-width: 1200px;
+  display: block;
+  max-width: var(--acts-content-max-width);
   margin: 0 auto;
-  padding: 0 16px;
+  padding-inline: var(--acts-space-4);
+
+  @include tokens.from(tablet) {
+    padding-inline: var(--acts-space-6);
+  }
+
+  @include tokens.from(desktop) {
+    padding-inline: var(--acts-space-8);
+  }
 }
 
 .logout-error {
-  margin: 8px 16px;
-  color: var(--mat-sys-error);
+  max-width: var(--acts-content-max-width);
+  margin: var(--acts-space-2) auto;
+  padding-inline: var(--acts-space-4);
+  color: var(--acts-error);
 }

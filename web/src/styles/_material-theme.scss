@@ -1,0 +1,56 @@
+// Angular Material theme for ACTS. Uses only public theming APIs and component override mixins;
+// values come from the shared tokens so Material and custom elements cannot drift apart.
+
+@use '@angular/material' as mat;
+@use 'theme-colors' as colors;
+@use 'tokens';
+
+@mixin theme {
+  color-scheme: light;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: colors.$primary-palette,
+        tertiary: colors.$tertiary-palette,
+        theme-type: light,
+      ),
+      typography: (
+        plain-family: tokens.$font-family,
+        brand-family: tokens.$font-family,
+      ),
+      density: 0,
+    )
+  );
+
+  @include mat.card-overrides(
+    (
+      outlined-container-color: tokens.$surface,
+      outlined-container-shape: tokens.$radius-card,
+      outlined-outline-color: tokens.$border,
+    )
+  );
+
+  @include mat.table-overrides(
+    (
+      background-color: tokens.$surface,
+      header-headline-color: tokens.$text-secondary,
+      row-item-label-text-color: tokens.$text,
+      row-item-outline-color: tokens.$border,
+    )
+  );
+
+  @include mat.paginator-overrides(
+    (
+      container-background-color: tokens.$surface,
+      container-text-color: tokens.$text-secondary,
+    )
+  );
+
+  @include mat.toolbar-overrides(
+    (
+      container-background-color: tokens.$navy,
+      container-text-color: #ffffff,
+    )
+  );
+}

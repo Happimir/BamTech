@@ -1,14 +1,22 @@
 @if (auth.isAuthenticated()) {
-  <mat-toolbar class="shell-bar">
-    <span class="wordmark">ACTS</span>
-    <span class="spacer"></span>
-    <span class="account">{{ auth.user()?.userName }} · {{ auth.user()?.roles?.join(', ') }}</span>
-    <button mat-button type="button" [disabled]="loggingOut()" (click)="logout()">Log out</button>
-  </mat-toolbar>
+  <header>
+    <mat-toolbar class="shell-bar">
+      <span class="wordmark">ACTS</span>
+      <nav class="nav" aria-label="Main">
+        <a mat-button routerLink="/people" routerLinkActive="nav-active" ariaCurrentWhenActive="page">People</a>
+      </nav>
+      <span class="spacer"></span>
+      <span class="account">
+        <span class="visually-hidden">Signed in as </span>{{ auth.user()?.userName }}
+        <span class="role">{{ auth.user()?.roles?.join(', ') }}</span>
+      </span>
+      <button mat-button type="button" [disabled]="loggingOut()" (click)="logout()">Log out</button>
+    </mat-toolbar>
+  </header>
   @if (logoutFailed()) {
     <p class="logout-error" role="alert">Sign-out failed. You are still signed in; try again.</p>
   }
 }
-<div class="content">
+<main class="content">
   <router-outlet />
-</div>
+</main>
