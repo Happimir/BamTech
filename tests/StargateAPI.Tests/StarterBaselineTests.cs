@@ -66,7 +66,7 @@ public class StarterBaselineTests
         var duties = await api.WithContextAsync(context =>
             context.AstronautDuties.OrderBy(d => d.DutyStartDate).ToListAsync());
         Assert.Equal(2, duties.Count);
-        Assert.Equal(new DateTime(2021, 3, 9), duties[0].DutyEndDate);
+        Assert.Equal(new DateOnly(2021, 3, 9), duties[0].DutyEndDate);
         Assert.Null(duties[1].DutyEndDate);
     }
 
@@ -83,7 +83,7 @@ public class StarterBaselineTests
         var detail = Assert.Single(details);
         Assert.Equal("Commander", detail.CurrentDutyTitle);
         Assert.Equal("CPT", detail.CurrentRank);
-        Assert.Equal(new DateTime(2020, 1, 1), detail.CareerStartDate);
+        Assert.Equal(new DateOnly(2020, 1, 1), detail.CareerStartDate);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class StarterBaselineTests
 
         var detail = await api.WithContextAsync(context => context.AstronautDetails.SingleAsync());
         Assert.Equal("RETIRED", detail.CurrentDutyTitle);
-        Assert.Equal(new DateTime(2024, 12, 31), detail.CareerEndDate);
+        Assert.Equal(new DateOnly(2024, 12, 31), detail.CareerEndDate);
     }
 
     [Fact]

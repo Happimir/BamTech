@@ -21,6 +21,7 @@ dotnet run --project src/StargateAPI --launch-profile https
 
 - The database file is `src/StargateAPI/starbase.db`. A relative `Data Source` in `ConnectionStrings:StarbaseApiDatabase` resolves against the API project folder, whichever folder you start it from.
 - Swagger UI is available in Development at `https://localhost:7204/swagger`.
+- **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run `dotnet ef database update` again.
 
 ## Tests
 

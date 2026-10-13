@@ -62,10 +62,12 @@ public sealed class TestApi : IAsyncDisposable
     }
 
     /// <summary>Seeds a person directly, independent of the API's create endpoint.</summary>
-    public Task SeedPersonAsync(string name) => WithContextAsync(async context =>
+    public Task<Guid> SeedPersonAsync(string name) => WithContextAsync(async context =>
     {
-        context.People.Add(new Person { Name = name });
+        var person = Person.Create(name);
+        context.People.Add(person);
         await context.SaveChangesAsync();
+        return person.Id;
     });
 
     /// <summary>Posts a duty using the legacy name-based body shape, which the redesign keeps.</summary>

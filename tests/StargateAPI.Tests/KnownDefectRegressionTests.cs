@@ -5,67 +5,13 @@ using StargateAPI.Tests.Infrastructure;
 namespace StargateAPI.Tests;
 
 /// <summary>
-/// Each test asserts the target behaviour from the design and is expected to FAIL against the
-/// supplied starter, documenting a defect from the API review. They turn green as the required
-/// API work fixes them. Run the passing baseline alone with: --filter "Category!=KnownDefect".
+/// Each test asserts the target behaviour from the design and is expected to FAIL until the
+/// fix lands, documenting a defect from the API review. Fixed tests move out of this class.
+/// Run the passing tests alone with: --filter-not-trait "Category=KnownDefect".
 /// </summary>
 [Trait("Category", "KnownDefect")]
 public class KnownDefectRegressionTests
 {
-    [Fact]
-    public async Task Get_duties_by_name_returns_the_duty_history()
-    {
-        // Starter: AstronautDutyController.GetAstronautDutiesByName dispatches GetPersonByName.
-        await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("Grace Hopper");
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
-        (await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).EnsureSuccessStatusCode();
-
-        var response = await api.Client.GetAsync("/AstronautDuty/Grace%20Hopper", TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var titles = Json.FindStrings(await Json.ReadAsync(response), "dutyTitle");
-        Assert.Contains("Pilot", titles);
-        Assert.Contains("Commander", titles);
-    }
-
-    [Fact]
-    public async Task Name_containing_an_apostrophe_is_treated_as_a_literal_value()
-    {
-        // Starter: GetPersonByName interpolates the name into SQL, so the quote breaks the query.
-        await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("Miles O'Brien");
-
-        var response = await api.Client.GetAsync("/Person/Miles%20O'Brien", TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Miles O'Brien", Json.FindStrings(await Json.ReadAsync(response), "name"));
-    }
-
-    [Fact]
-    public async Task Crafted_name_cannot_select_another_persons_record()
-    {
-        // Starter: "' OR 1=1 OR '" rewrites the WHERE clause and returns the first person.
-        await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("Alice Example");
-
-        var response = await api.Client.GetAsync("/Person/" + Uri.EscapeDataString("' OR 1=1 OR '"), TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.DoesNotContain("Alice Example", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task Unknown_person_name_returns_404()
-    {
-        // Starter: returns 200 with a null person inside a "successful" envelope.
-        await using var api = await TestApi.CreateAsync();
-
-        var response = await api.Client.GetAsync("/Person/Nobody%20Here", TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
     [Fact]
     public async Task Duty_for_a_missing_person_returns_404()
     {
@@ -113,6 +59,7 @@ public class KnownDefectRegressionTests
     public async Task Earlier_start_date_is_rejected_without_changing_history()
     {
         // Starter: closes the latest duty regardless of chronology, producing an end before its start.
+        // Since the Guid schema, the CHECK constraint blocks the inversion, but as an unhandled 500.
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
         (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
@@ -128,8 +75,8 @@ public class KnownDefectRegressionTests
     [Fact]
     public async Task Repeated_start_date_is_a_chronology_conflict()
     {
-        // Starter: the cross-person preprocessor throws BadHttpRequestException, surfacing as an
-        // unhandled exception. Documented policy: 409 chronology_conflict, no extra duty written.
+        // Starter: the cross-person preprocessor throws BadHttpRequestException (now a 400).
+        // Documented policy: 409 chronology_conflict, no extra duty written.
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
         (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
