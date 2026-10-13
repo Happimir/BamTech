@@ -1,13 +1,39 @@
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Commands;
 using StargateAPI.Business.Data;
+using StargateAPI.Business.Results;
+using StargateAPI.Controllers;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+    {
+        // Command bodies are small; bound them so oversized payloads are rejected early.
+        options.Filters.Add(new RequestSizeLimitAttribute(32 * 1024));
+    })
+    .AddJsonOptions(options =>
+    {
+        // Unknown fields (including derived/read-only ones such as end dates) are a 400, not silently ignored.
+        options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var factory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateValidationProblemDetails(context.HttpContext, context.ModelState);
+            problem.Extensions["code"] = ErrorCodes.Validation;
+            return new BadRequestObjectResult(problem) { ContentTypes = { ControllerBaseExtensions.ProblemJson } };
+        };
+    });
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -25,6 +51,9 @@ builder.Services.AddMediatR(cfg =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

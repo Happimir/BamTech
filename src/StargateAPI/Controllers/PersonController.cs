@@ -1,12 +1,14 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
 using StargateAPI.Business.Queries;
-using System.Net;
 
 namespace StargateAPI.Controllers
 {
-   
+    /// <summary>
+    /// Original name-based routes, kept as compatibility adapters. Names are not unique: an
+    /// ambiguous name returns 409 and callers should switch to the ID routes under /api/people.
+    /// </summary>
     [ApiController]
     [Route("[controller]")]
     public class PersonController : ControllerBase
@@ -18,73 +20,32 @@ namespace StargateAPI.Controllers
         }
 
         [HttpGet("")]
-        public async Task<IActionResult> GetPeople()
+        public async Task<IActionResult> GetPeople(CancellationToken cancellationToken)
         {
-            try
-            {
-                var result = await _mediator.Send(new GetPeople()
-                {
-
-                });
-
-                return this.GetResponse(result);
-            }
-            catch (Exception ex)
-            {
-                return this.GetResponse(new BaseResponse()
-                {
-                    Message = ex.Message,
-                    Success = false,
-                    ResponseCode = (int)HttpStatusCode.InternalServerError
-                });
-            }
+            return Ok(await _mediator.Send(new GetPeople(), cancellationToken));
         }
+
+        /// <summary>Exact name lookup without path-segment limitations (slashes, reserved words).</summary>
+        [HttpGet("by-name")]
+        public Task<IActionResult> GetPersonByNameQuery([FromQuery] string? name, CancellationToken cancellationToken) =>
+            GetPersonByNameCore(name, cancellationToken);
 
         [HttpGet("{name}")]
-        public async Task<IActionResult> GetPersonByName(string name)
-        {
-            try
-            {
-                var result = await _mediator.Send(new GetPersonByName()
-                {
-                    Name = name
-                });
+        public Task<IActionResult> GetPersonByName(string name, CancellationToken cancellationToken) =>
+            GetPersonByNameCore(name, cancellationToken);
 
-                return this.GetResponse(result);
-            }
-            catch (Exception ex)
-            {
-                return this.GetResponse(new BaseResponse()
-                {
-                    Message = ex.Message,
-                    Success = false,
-                    ResponseCode = (int)HttpStatusCode.InternalServerError
-                });
-            }
+        /// <summary>Deprecated raw-string create; prefer POST /api/people with structured fields.</summary>
+        [HttpPost("")]
+        public async Task<IActionResult> CreatePerson([FromBody] string name, CancellationToken cancellationToken)
+        {
+            var result = await _mediator.Send(new CreatePerson(name), cancellationToken);
+            return this.ToActionResult(result, person => Created($"/api/people/{person.Id}", person));
         }
 
-        [HttpPost("")]
-        public async Task<IActionResult> CreatePerson([FromBody] string name)
+        private async Task<IActionResult> GetPersonByNameCore(string? name, CancellationToken cancellationToken)
         {
-            try
-            {
-                var result = await _mediator.Send(new CreatePerson()
-                {
-                    Name = name
-                });
-
-                return this.GetResponse(result);
-            }
-            catch (Exception ex)
-            {
-                return this.GetResponse(new BaseResponse()
-                {
-                    Message = ex.Message,
-                    Success = false,
-                    ResponseCode = (int)HttpStatusCode.InternalServerError
-                });
-            }
-
+            var result = await _mediator.Send(new GetPerson(Name: name), cancellationToken);
+            return this.ToActionResult(result, Ok);
         }
     }
 }

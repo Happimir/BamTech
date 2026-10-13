@@ -1,40 +1,43 @@
-﻿using Dapper;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Dtos;
-using StargateAPI.Controllers;
 
 namespace StargateAPI.Business.Queries
 {
-    public class GetPeople : IRequest<GetPeopleResult>
+    public class GetPeople : IRequest<IReadOnlyList<PersonSummaryDto>>
     {
 
     }
 
-    public class GetPeopleHandler : IRequestHandler<GetPeople, GetPeopleResult>
+    public class GetPeopleHandler : IRequestHandler<GetPeople, IReadOnlyList<PersonSummaryDto>>
     {
-        public readonly StargateContext _context;
+        private readonly StargateContext _context;
+
         public GetPeopleHandler(StargateContext context)
         {
             _context = context;
         }
-        public async Task<GetPeopleResult> Handle(GetPeople request, CancellationToken cancellationToken)
+
+        public async Task<IReadOnlyList<PersonSummaryDto>> Handle(GetPeople request, CancellationToken cancellationToken)
         {
-            var result = new GetPeopleResult();
-
-            var query = $"SELECT a.Id as PersonId, a.Name, b.CurrentRank, b.CurrentDutyTitle, b.CareerStartDate, b.CareerEndDate FROM [Person] a LEFT JOIN [AstronautDetail] b on b.PersonId = a.Id";
-
-            var people = await _context.Connection.QueryAsync<PersonAstronaut>(query);
-
-            result.People = people.ToList();
-
-            return result;
+            return await _context.People
+                .AsNoTracking()
+                .OrderBy(p => p.NormalizedName)
+                .ThenBy(p => p.Id)
+                .Select(p => new PersonSummaryDto(
+                    p.Id,
+                    p.Name,
+                    p.Version,
+                    p.AstronautDetail == null
+                        ? null
+                        : new AstronautSummaryDto(
+                            p.AstronautDetail.CurrentRank,
+                            p.AstronautDetail.CurrentDutyTitle,
+                            p.AstronautDetail.CurrentDutyStartDate,
+                            p.AstronautDetail.CareerStartDate,
+                            p.AstronautDetail.CareerEndDate)))
+                .ToListAsync(cancellationToken);
         }
-    }
-
-    public class GetPeopleResult : BaseResponse
-    {
-        public List<PersonAstronaut> People { get; set; } = new List<PersonAstronaut> { };
-
     }
 }

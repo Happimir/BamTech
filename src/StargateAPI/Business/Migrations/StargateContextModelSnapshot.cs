@@ -15,82 +15,135 @@ namespace StargateAPI.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "7.0.15");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("StargateAPI.Business.Data.AstronautDetail", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("CareerEndDate")
+                    b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("CareerStartDate")
+                    b.Property<DateOnly?>("CareerEndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("CareerStartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("CurrentDutyStartDate")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CurrentDutyTitle")
                         .IsRequired()
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CurrentRank")
                         .IsRequired()
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("PersonId")
-                        .HasColumnType("INTEGER");
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("PersonId")
                         .IsUnique();
 
-                    b.ToTable("AstronautDetail");
+                    b.ToTable("AstronautDetail", t =>
+                        {
+                            t.HasCheckConstraint("CK_AstronautDetail_CareerEnd_AfterStart", "\"CareerEndDate\" IS NULL OR \"CareerEndDate\" >= \"CareerStartDate\"");
+
+                            t.HasCheckConstraint("CK_AstronautDetail_CurrentDutyTitle_NotBlank", "length(trim(\"CurrentDutyTitle\")) > 0");
+
+                            t.HasCheckConstraint("CK_AstronautDetail_CurrentRank_NotBlank", "length(trim(\"CurrentRank\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("StargateAPI.Business.Data.AstronautDuty", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("DutyEndDate")
+                    b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("DutyStartDate")
+                    b.Property<DateOnly?>("DutyEndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("DutyStartDate")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DutyTitle")
                         .IsRequired()
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("PersonId")
-                        .HasColumnType("INTEGER");
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Rank")
                         .IsRequired()
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PersonId");
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AstronautDuty_PersonId_Open")
+                        .HasFilter("\"DutyEndDate\" IS NULL");
 
-                    b.ToTable("AstronautDuty");
+                    b.HasIndex("PersonId", "DutyStartDate")
+                        .IsUnique();
+
+                    b.ToTable("AstronautDuty", t =>
+                        {
+                            t.HasCheckConstraint("CK_AstronautDuty_DutyTitle_NotBlank", "length(trim(\"DutyTitle\")) > 0");
+
+                            t.HasCheckConstraint("CK_AstronautDuty_End_AfterStart", "\"DutyEndDate\" IS NULL OR \"DutyEndDate\" >= \"DutyStartDate\"");
+
+                            t.HasCheckConstraint("CK_AstronautDuty_Rank_NotBlank", "length(trim(\"Rank\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("StargateAPI.Business.Data.Person", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MiddleName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(1200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Person");
+                    b.HasIndex("NormalizedName", "Id");
+
+                    b.ToTable("Person", t =>
+                        {
+                            t.HasCheckConstraint("CK_Person_Name_NotBlank", "length(trim(\"Name\")) > 0");
+
+                            t.HasCheckConstraint("CK_Person_NormalizedName_NotBlank", "length(trim(\"NormalizedName\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("StargateAPI.Business.Data.AstronautDetail", b =>
