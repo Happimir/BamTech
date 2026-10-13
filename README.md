@@ -7,6 +7,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 ## Prerequisites
 
 - .NET 10 SDK (10.0.100 or later; see `global.json`)
+- Node.js 24.18 or later with npm 11 (for the Angular UI in `web/`)
 
 There is no database server to install: the API uses a local SQLite file.
 
@@ -31,6 +32,26 @@ Seeding is idempotent: re-running it adds missing roles or accounts and leaves e
 - The database file is `src/StargateAPI/starbase.db`. A relative `Data Source` in `ConnectionStrings:StarbaseApiDatabase` resolves against the API project folder, whichever folder you start it from.
 - Swagger UI is available in Development at `https://localhost:7204/swagger`.
 - **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run `dotnet ef database update` again.
+
+## Run the web UI
+
+The Angular app (`web/`) is served over HTTPS and proxies `/api` and `/auth` to the API on the same origin, so the Secure, SameSite=Strict cookies work without CORS. Start the API first (above), then:
+
+```bash
+cd web
+npm ci
+npm run certs        # exports the ASP.NET development certificate to web/.certs (git-ignored)
+npm start            # https://localhost:4200
+```
+
+If the browser warns about the certificate, trust it once with `dotnet dev-certs https --trust`. The same self-signed localhost certificate serves both the API and the UI.
+
+```bash
+npm test             # unit tests (Vitest)
+npm run build        # production build to web/dist
+# End-to-end check against the running API and dev server (uses your installed Chrome):
+E2E_ADMIN_PASSWORD='<admin password>' npm run e2e
+```
 
 ## Sign-in and permissions
 
