@@ -56,6 +56,41 @@ namespace StargateAPI.Business.Data
         /// <summary>Marks an aggregate change so concurrent writers based on the old version conflict.</summary>
         public void Touch() => Version = Guid.NewGuid();
 
+        /// <summary>
+        /// Replaces all name fields (PUT semantics: omitted parts become null). Returns false, and
+        /// leaves the version unchanged, when nothing actually changes.
+        /// </summary>
+        public bool ReplaceNames(string name, string? firstName, string? middleName, string? lastName)
+        {
+            if (Name == name.Trim()
+                && FirstName == NullIfBlank(firstName)
+                && MiddleName == NullIfBlank(middleName)
+                && LastName == NullIfBlank(lastName))
+            {
+                return false;
+            }
+
+            SetNames(name, firstName, middleName, lastName);
+            Touch();
+            return true;
+        }
+
+        /// <summary>
+        /// Legacy name-only rename. Clears the structured parts when the display name changes so stale
+        /// parts cannot misrepresent the person; an unchanged name is a no-op that preserves them.
+        /// </summary>
+        public bool ChangeDisplayName(string name)
+        {
+            if (Name == name.Trim())
+            {
+                return false;
+            }
+
+            SetNames(name, null, null, null);
+            Touch();
+            return true;
+        }
+
         private void SetNames(string name, string? firstName, string? middleName, string? lastName)
         {
             Name = name.Trim();
