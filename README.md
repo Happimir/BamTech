@@ -16,12 +16,45 @@ There is no database server to install: the API uses a local SQLite file.
 dotnet tool restore                               # installs the pinned dotnet-ef locally
 dotnet build                                      # restores packages; dotnet ef needs them
 dotnet ef database update --project src/StargateAPI
+
+# Demo accounts: choose passwords (min. 6 chars with upper, lower, digit and symbol).
+# They are kept in your local user-secrets store, never in the repository.
+dotnet user-secrets set "DemoUsers:AdminPassword" "<admin password>" --project src/StargateAPI
+dotnet user-secrets set "DemoUsers:ReaderPassword" "<reader password>" --project src/StargateAPI
+dotnet run --project src/StargateAPI --launch-profile https -- seed-demo-users
+
 dotnet run --project src/StargateAPI --launch-profile https
 ```
+
+Seeding is idempotent: re-running it adds missing roles or accounts and leaves existing passwords unchanged. Environment variables `DemoUsers__AdminPassword` / `DemoUsers__ReaderPassword` work instead of user-secrets.
 
 - The database file is `src/StargateAPI/starbase.db`. A relative `Data Source` in `ConnectionStrings:StarbaseApiDatabase` resolves against the API project folder, whichever folder you start it from.
 - Swagger UI is available in Development at `https://localhost:7204/swagger`.
 - **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run `dotnet ef database update` again.
+
+## Sign-in and permissions
+
+Every API route requires a signed-in account except the three sign-in routes.
+
+| Account | Role | Can |
+| --- | --- | --- |
+| `admin` | Admin | read people and duties, create and update people, add duties |
+| `reader` | Reader | read people and duties |
+
+- Sign-in uses an HttpOnly, Secure, SameSite=Strict cookie backed by a server-side session (8 hours, not extended by activity). The session is checked on every request, so **logout revokes it immediately**: a copied cookie stops working on its next use. Disabling an account or changing its security stamp also ends its sessions.
+- State-changing requests need an antiforgery token: call `GET /auth/antiforgery`, then send the `XSRF-TOKEN` cookie value as the `X-XSRF-TOKEN` header on POST/PUT, including login and logout. A missing or invalid token gets 400 `csrf_failed`.
+- Responses are 401 `unauthenticated` when not signed in and 403 `forbidden` when the role lacks permission; there are no login redirects. Five failed sign-ins lock an account for five minutes, and every failure returns the same generic 401.
+- `GET /auth/me` returns the account, its roles and its capabilities (`People.Read`, `People.Write`, `Duties.Write`).
+
+Signing in with curl (`-k` accepts the local development certificate):
+
+```bash
+curl -k -c jar -b jar https://localhost:7204/auth/antiforgery
+XSRF=$(awk '/XSRF-TOKEN/ {print $7}' jar)
+curl -k -c jar -b jar -H "X-XSRF-TOKEN: $XSRF" -H "Content-Type: application/json" \
+     -d '{"userName":"admin","password":"<admin password>"}' https://localhost:7204/auth/login
+curl -k -b jar "https://localhost:7204/api/people?pageSize=10"
+```
 
 ## Process logs
 

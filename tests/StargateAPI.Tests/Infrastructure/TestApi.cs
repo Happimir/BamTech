@@ -1,14 +1,39 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StargateAPI.Business.Data;
+using StargateAPI.Security;
 
 namespace StargateAPI.Tests.Infrastructure;
+
+public enum TestUser
+{
+    Anonymous,
+    Admin,
+    Reader
+}
+
+/// <summary>Copies the XSRF-TOKEN cookie into the X-XSRF-TOKEN header on unsafe methods, as Angular does.</summary>
+public sealed class XsrfHeaderHandler(System.Net.CookieContainer cookies) : DelegatingHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.Method != HttpMethod.Get && request.Method != HttpMethod.Head && request.Method != HttpMethod.Options
+            && cookies.GetCookies(request.RequestUri!)["XSRF-TOKEN"] is { } token
+            && !request.Headers.Contains(SecurityServiceCollectionExtensions.XsrfHeaderName))
+        {
+            request.Headers.Add(SecurityServiceCollectionExtensions.XsrfHeaderName, token.Value);
+        }
+        return base.SendAsync(request, cancellationToken);
+    }
+}
 
 /// <summary>
 /// An isolated API host per test, using the real "StarbaseApiDatabase" connection string so the
@@ -20,23 +45,33 @@ namespace StargateAPI.Tests.Infrastructure;
 /// </summary>
 public sealed class TestApi : IAsyncDisposable
 {
+    public const string AdminPassword = "Admin-Test-Pass-1!";
+    public const string ReaderPassword = "Reader-Test-Pass-1!";
+
     private readonly SqliteConnection? _keepAlive;
     private readonly string? _databaseFile;
     private readonly WebApplicationFactory<Program> _factory;
+    private readonly List<HttpClient> _clients = [];
 
     private TestApi(SqliteConnection? keepAlive, string? databaseFile, WebApplicationFactory<Program> factory)
     {
         _keepAlive = keepAlive;
         _databaseFile = databaseFile;
         _factory = factory;
-        Client = factory.CreateClient();
     }
 
-    public HttpClient Client { get; }
+    /// <summary>The default client, signed in as <see cref="TestUser"/> given to CreateAsync (Admin unless stated).</summary>
+    public HttpClient Client { get; private set; } = null!;
 
     public IServiceProvider Services => _factory.Services;
 
-    public static async Task<TestApi> CreateAsync(bool useFileDatabase = false, Action<IServiceCollection>? configureServices = null)
+    /// <summary>
+    /// Starts an isolated API with migrated storage and the seeded admin/reader accounts, and a
+    /// default client signed in through the real antiforgery + login flow. Process logs written
+    /// by that sign-in are cleared so each test sees only its own.
+    /// </summary>
+    public static async Task<TestApi> CreateAsync(
+        bool useFileDatabase = false, Action<IServiceCollection>? configureServices = null, TestUser user = TestUser.Admin)
     {
         SqliteConnection? keepAlive = null;
         string? databaseFile = null;
@@ -57,15 +92,65 @@ public sealed class TestApi : IAsyncDisposable
         {
             builder.UseEnvironment("Testing");
             builder.UseSetting("ConnectionStrings:StarbaseApiDatabase", connectionString);
-            if (configureServices is not null)
+            builder.ConfigureTestServices(services =>
             {
-                builder.ConfigureTestServices(configureServices);
-            }
+                // Tests only: far fewer PBKDF2 iterations keep sign-in fast. Production keeps the default.
+                services.Configure<PasswordHasherOptions>(options => options.IterationCount = 1_000);
+                configureServices?.Invoke(services);
+            });
         });
 
         var api = new TestApi(keepAlive, databaseFile, factory);
         await api.WithContextAsync(context => context.Database.MigrateAsync());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var errors = await DemoUserSeeder.SeedAsync(scope.ServiceProvider, AdminPassword, ReaderPassword);
+            Assert.Empty(errors);
+        }
+
+        api.Client = await api.CreateClientAsync(user);
+        if (user != TestUser.Anonymous)
+        {
+            // Sign-in issued two requests (antiforgery, login); start each test with an empty log.
+            await api.ProcessLogsAsync(expectedOutcomes: 2);
+            await api.WithContextAsync(context => context.ProcessLogs.ExecuteDeleteAsync());
+        }
         return api;
+    }
+
+    /// <summary>
+    /// A new client with its own cookie jar, over https (the auth cookies are Secure). Like the
+    /// Angular app, it echoes the XSRF-TOKEN cookie as the X-XSRF-TOKEN header on writes.
+    /// </summary>
+    public async Task<HttpClient> CreateClientAsync(TestUser user)
+    {
+        var cookies = new CookieContainerHandler();
+        var client = _factory.CreateDefaultClient(new Uri("https://localhost"), new XsrfHeaderHandler(cookies.Container), cookies);
+        _clients.Add(client);
+        if (user != TestUser.Anonymous)
+        {
+            var (userName, password) = user == TestUser.Admin
+                ? (DemoUserSeeder.AdminUserName, AdminPassword)
+                : (DemoUserSeeder.ReaderUserName, ReaderPassword);
+            var login = await LoginAsync(client, userName, password);
+            login.EnsureSuccessStatusCode();
+        }
+        return client;
+    }
+
+    /// <summary>A client with no cookie jar and no XSRF handling, for sending hand-built requests.</summary>
+    public HttpClient CreatePlainClient()
+    {
+        var client = _factory.CreateDefaultClient(new Uri("https://localhost"));
+        _clients.Add(client);
+        return client;
+    }
+
+    /// <summary>The browser flow: fetch the antiforgery token, then post credentials.</summary>
+    public static async Task<HttpResponseMessage> LoginAsync(HttpClient client, string userName, string password)
+    {
+        (await client.GetAsync("/auth/antiforgery")).EnsureSuccessStatusCode();
+        return await client.PostAsJsonAsync("/auth/login", new { userName, password });
     }
 
     public async Task WithContextAsync(Func<StargateContext, Task> action)
@@ -117,7 +202,10 @@ public sealed class TestApi : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        Client.Dispose();
+        foreach (var client in _clients)
+        {
+            client.Dispose();
+        }
         await _factory.DisposeAsync();
         if (_keepAlive is not null)
         {
