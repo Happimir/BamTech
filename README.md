@@ -46,15 +46,19 @@ cd web
 npm ci
 npm run certs        # exports the ASP.NET development certificate to web/.certs (git-ignored)
 npm start            # https://localhost:4200
+npm run seed:sample  # optional: fictional sample people and duty histories, via the API
 ```
 
 If the browser warns about the certificate, trust it once with `dotnet dev-certs https --trust`. The same self-signed localhost certificate serves both the API and the UI.
 
+The sample data is created through the API as `admin`, so it goes through the same validation as the UI. It covers every state the UI shows: people with no assignment, active, retired and reactivated careers, namesakes, a long name and title, a long history, and enough people for two pages. It runs only once: if its first person already exists, it does nothing.
+
 ```bash
 npm test             # unit tests (Vitest)
 npm run build        # production build to web/dist
-# End-to-end check against the running API and dev server (uses your installed Chrome).
-# Uses the Development admin password; set E2E_ADMIN_PASSWORD if you seeded your own.
+# End-to-end checks against the running API and dev server (uses your installed Chrome).
+# Seeds the sample data first if missing. Uses the Development admin password;
+# set E2E_ADMIN_PASSWORD (and ACTS_ADMIN_PASSWORD for the seed) if you seeded your own.
 npm run e2e
 ```
 
