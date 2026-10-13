@@ -32,3 +32,23 @@ export interface PagedResponse<T> {
   totalCount: number;
   totalPages: number;
 }
+
+export interface PersonDetail extends PersonSummary {
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+}
+
+export interface Duty {
+  id: string;
+  rank: string;
+  dutyTitle: string;
+  dutyStartDate: string;
+  dutyEndDate: string | null;
+}
+
+/** A person and their duty history, newest first, read as one consistent snapshot. */
+export interface PersonDuties {
+  person: PersonDetail;
+  duties: Duty[];
+}

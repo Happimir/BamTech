@@ -1,0 +1,121 @@
+<div class="back">
+  <a mat-button [routerLink]="backLink"><span aria-hidden="true">←</span> Back to people</a>
+</div>
+
+@switch (store.view()) {
+  @case ('loading') {
+    <p class="visually-hidden" role="status">Loading person…</p>
+    <div class="skeleton-header" aria-hidden="true"><span class="skeleton-bar skeleton-bar--title"></span></div>
+    <div class="cards" aria-hidden="true">
+      <div class="skeleton-card skeleton-card--summary"></div>
+      <div class="skeleton-card skeleton-card--history"></div>
+    </div>
+  }
+  @case ('not-found') {
+    <div class="notice">
+      <h1>Person not found</h1>
+      <p>There is no person with this ID. They may have been removed, or the link may be incomplete.</p>
+      <a mat-flat-button [routerLink]="backLink">Back to people</a>
+    </div>
+  }
+  @case ('forbidden') {
+    <div class="notice">
+      <h1>Access denied</h1>
+      <p>Your account does not have permission to view people records.</p>
+    </div>
+  }
+  @case ('error') {
+    <div class="notice notice--error" role="alert">
+      <h1>This person could not be loaded</h1>
+      <p>
+        @if (store.isUnavailable()) {
+          The service is unavailable right now.
+        } @else {
+          Something went wrong while loading their record.
+        }
+      </p>
+      <button mat-flat-button type="button" (click)="store.reload()">Retry</button>
+    </div>
+  }
+  @case ('ready') {
+    @if (store.person(); as person) {
+      <header class="person-header">
+        <div class="title-row">
+          <h1>{{ person.name }}</h1>
+          <acts-status-badge [status]="store.status()" />
+        </div>
+        <p class="id-row">
+          <span class="id-label">ID</span>
+          <code class="person-id">{{ person.id }}</code>
+          <button mat-button type="button" class="copy-button" (click)="copyId(person.id)">
+            {{ idCopied() ? 'Copied' : 'Copy ID' }}
+          </button>
+        </p>
+      </header>
+
+      <div class="cards">
+        <mat-card appearance="outlined" class="summary-card">
+          <h2 class="card-title">Current assignment</h2>
+          @if (summary(); as current) {
+            <dl class="facts">
+              <div><dt>Rank</dt><dd>{{ current.rank }}</dd></div>
+              <div><dt>Duty</dt><dd>{{ current.duty }}</dd></div>
+              <div><dt>Since</dt><dd class="tabular-numbers">{{ current.since }}</dd></div>
+              <div><dt>First service date</dt><dd class="tabular-numbers">{{ current.firstServiceDate }}</dd></div>
+              @if (current.careerEnd) {
+                <div><dt>Career end</dt><dd class="tabular-numbers">{{ current.careerEnd }}</dd></div>
+              }
+            </dl>
+          } @else {
+            <p class="empty">No astronaut assignment yet. Duty details and career dates appear once a first duty is recorded.</p>
+          }
+
+          @if (nameParts().length) {
+            <h3 class="subheading">Name details</h3>
+            <dl class="facts">
+              @for (part of nameParts(); track part.label) {
+                <div><dt>{{ part.label }}</dt><dd>{{ part.value }}</dd></div>
+              }
+            </dl>
+          }
+        </mat-card>
+
+        <mat-card appearance="outlined" class="history-card">
+          <h2 class="card-title">
+            Duty history
+            @if (store.timeline().length) {
+              <span class="count">{{ store.timeline().length }} {{ store.timeline().length === 1 ? 'entry' : 'entries' }}, newest first</span>
+            }
+          </h2>
+          @if (store.timeline().length) {
+            <ol class="timeline">
+              @for (item of store.timeline(); track item.id) {
+                <li class="entry" [class.entry--current]="item.isCurrent" [class.entry--retired]="item.isRetirement">
+                  <span class="marker" aria-hidden="true"></span>
+                  <div class="entry-body">
+                    <p class="entry-title">{{ item.title }}</p>
+                    <p class="entry-rank">{{ item.rank }}</p>
+                    <p class="entry-dates tabular-numbers">
+                      <time [attr.datetime]="item.start.iso">{{ item.start.label }}</time>
+                      <span aria-hidden="true"> – </span><span class="visually-hidden"> to </span>
+                      @if (item.end; as end) {
+                        <time [attr.datetime]="end.iso">{{ end.label }}</time>
+                      } @else {
+                        <span class="current-label">Current</span>
+                      }
+                    </p>
+                    @if (item.returnedToActiveDuty) {
+                      <p class="annotation">Returned to active duty</p>
+                    }
+                  </div>
+                </li>
+              }
+            </ol>
+          } @else {
+            <p class="empty">No duties recorded.</p>
+          }
+        </mat-card>
+      </div>
+    }
+  }
+}

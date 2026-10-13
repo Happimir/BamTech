@@ -1,0 +1,265 @@
+@use 'tokens';
+
+:host {
+  display: block;
+  padding-block: var(--acts-space-4) var(--acts-space-8);
+}
+
+.back {
+  margin-inline-start: calc(-1 * var(--acts-space-3));
+  margin-bottom: var(--acts-space-2);
+}
+
+h1 {
+  margin: 0;
+  font: var(--mat-sys-headline-medium);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.person-header {
+  margin-bottom: var(--acts-space-6);
+}
+
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acts-space-2) var(--acts-space-4);
+}
+
+.id-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--acts-space-2);
+  margin: var(--acts-space-2) 0 0;
+  color: var(--acts-text-secondary);
+  font: var(--mat-sys-body-small);
+}
+
+.person-id {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+// Summary (~1/3) beside history (~2/3) on wide screens; stacked otherwise. Cards keep their
+// own height: a long timeline must not stretch the summary.
+.cards {
+  display: grid;
+  gap: var(--acts-space-4);
+  align-items: start;
+
+  @media (min-width: 840px) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: var(--acts-space-6);
+  }
+}
+
+.summary-card,
+.history-card {
+  padding: var(--acts-space-4);
+
+  @include tokens.from(tablet) {
+    padding: var(--acts-space-6);
+  }
+}
+
+.card-title {
+  margin: 0 0 var(--acts-space-4);
+  font: var(--mat-sys-title-large);
+}
+
+.count {
+  display: block;
+  margin-top: var(--acts-space-1);
+  color: var(--acts-text-secondary);
+  font: var(--mat-sys-body-small);
+}
+
+.subheading {
+  margin: var(--acts-space-6) 0 var(--acts-space-3);
+  font: var(--mat-sys-title-small);
+}
+
+.facts {
+  display: grid;
+  gap: var(--acts-space-3);
+  margin: 0;
+
+  div {
+    display: grid;
+    gap: 2px;
+  }
+
+  dt {
+    color: var(--acts-text-secondary);
+    font: var(--mat-sys-label-large);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.empty {
+  margin: 0;
+  color: var(--acts-text-secondary);
+}
+
+// Vertical timeline: a marker per entry joined by a connector. Spacing is uniform; connector
+// length never implies duration.
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: var(--acts-space-4);
+  padding-bottom: var(--acts-space-6);
+
+  &:last-child {
+    padding-bottom: 0;
+  }
+
+  // Connector to the next (older) entry.
+  &:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    bottom: 0;
+    left: 7px;
+    width: 2px;
+    background: var(--acts-border);
+  }
+}
+
+.marker {
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  margin-inline-start: 2px;
+  border: 2px solid var(--acts-status-unassigned-border);
+  border-radius: 50%;
+  background: var(--acts-surface);
+  box-sizing: border-box;
+}
+
+.entry--current .marker {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+  margin-inline-start: 0;
+  border-color: var(--acts-primary);
+  background: var(--acts-primary);
+  box-shadow: 0 0 0 4px var(--acts-status-active-background);
+}
+
+.entry--retired .marker {
+  border-color: var(--acts-status-retired-text);
+  background: var(--acts-status-retired-background);
+}
+
+.entry--current.entry--retired .marker {
+  border-color: var(--acts-status-retired-text);
+  background: var(--acts-status-retired-text);
+  box-shadow: 0 0 0 4px var(--acts-status-retired-background);
+}
+
+.entry-body p {
+  margin: 0;
+}
+
+.entry-title {
+  font: var(--mat-sys-title-medium);
+  overflow-wrap: anywhere;
+}
+
+.entry--current .entry-title {
+  font-weight: 700;
+}
+
+.entry-rank {
+  color: var(--acts-text);
+}
+
+.entry-dates {
+  color: var(--acts-text-secondary);
+  font: var(--mat-sys-body-medium);
+}
+
+.current-label {
+  color: var(--acts-status-active-text);
+  font-weight: 600;
+}
+
+.entry--retired .current-label {
+  color: var(--acts-status-retired-text);
+}
+
+.annotation {
+  display: inline-block;
+  margin-top: var(--acts-space-2) !important;
+  padding: 2px var(--acts-space-2);
+  border-radius: 6px;
+  background: var(--acts-status-active-background);
+  color: var(--acts-status-active-text);
+  font: var(--mat-sys-label-medium);
+}
+
+.notice {
+  display: grid;
+  justify-items: start;
+  gap: var(--acts-space-3);
+  max-width: 640px;
+  padding: var(--acts-space-6);
+  border: 1px solid var(--acts-border);
+  border-radius: var(--acts-radius-card);
+  background: var(--acts-surface);
+
+  p {
+    margin: 0;
+  }
+}
+
+.notice--error {
+  border-color: var(--acts-error);
+}
+
+.skeleton-header {
+  margin-bottom: var(--acts-space-6);
+}
+
+.skeleton-bar--title {
+  display: block;
+  width: min(320px, 70%);
+  height: 32px;
+  border-radius: 8px;
+  background: var(--acts-skeleton);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-card {
+  border-radius: var(--acts-radius-card);
+  background: var(--acts-skeleton);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-card--summary {
+  height: 280px;
+}
+
+.skeleton-card--history {
+  height: 420px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}

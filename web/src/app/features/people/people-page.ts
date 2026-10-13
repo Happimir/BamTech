@@ -9,9 +9,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTableModule } from '@angular/material/table';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
-import { MAX_NAME_LENGTH, PAGE_SIZE_OPTIONS } from './people-query';
+import { DirectoryReturnState } from '../person-detail/directory-return';
+import { MAX_NAME_LENGTH, PAGE_SIZE_OPTIONS, toQueryParams } from './people-query';
 import { PeopleStore } from './people.store';
 import { PersonRow, toPersonRows } from './person-rows';
 import { StatusBadge } from './status-badge';
@@ -70,6 +71,15 @@ export class PeoplePage {
       },
     },
   );
+
+  private readonly router = inject(Router);
+
+  /** Lets "Back to people" on a detail page restore this search and page. */
+  protected readonly returnState = computed<DirectoryReturnState>(() => ({
+    returnTo: this.router.serializeUrl(
+      this.router.createUrlTree(['/people'], { queryParams: toQueryParams(this.store.query()) }),
+    ),
+  }));
 
   protected readonly rows = computed<PersonRow[]>(() => toPersonRows(this.store.result()?.items ?? []));
 

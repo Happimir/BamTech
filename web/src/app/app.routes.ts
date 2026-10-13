@@ -21,5 +21,12 @@ export const routes: Routes = [
     canActivate: [authenticatedGuard],
     loadComponent: () => import('./features/people/people-page').then((m) => m.PeoplePage),
   },
+  {
+    path: 'people/:id',
+    title: 'Person · ACTS',
+    canActivate: [authenticatedGuard],
+    loadComponent: () =>
+      import('./features/person-detail/person-detail-page').then((m) => m.PersonDetailPage),
+  },
   { path: '**', redirectTo: 'people' },
 ];
