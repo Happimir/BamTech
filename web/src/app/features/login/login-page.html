@@ -1,0 +1,50 @@
+<main class="login">
+  <mat-card appearance="outlined" class="login-card">
+    <mat-card-header>
+      <mat-card-title><h1 class="login-title">Sign in to ACTS</h1></mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formRoot]="loginForm" class="login-form">
+        <mat-form-field>
+          <mat-label>Username</mat-label>
+          <input matInput [formField]="loginForm.userName" autocomplete="username" />
+          @for (error of loginForm.userName().errors(); track error.kind) {
+            <mat-error>{{ error.message }}</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field>
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            [formField]="loginForm.password"
+            [type]="showPassword() ? 'text' : 'password'"
+            autocomplete="current-password"
+          />
+          <button
+            mat-button
+            matSuffix
+            type="button"
+            [attr.aria-pressed]="showPassword()"
+            (click)="showPassword.set(!showPassword())"
+          >
+            {{ showPassword() ? 'Hide' : 'Show' }}
+          </button>
+          @for (error of loginForm.password().errors(); track error.kind) {
+            <mat-error>{{ error.message }}</mat-error>
+          }
+        </mat-form-field>
+
+        <div class="login-status" role="alert">
+          @for (error of loginForm().errors(); track error.kind) {
+            <p class="login-error">{{ error.message }}</p>
+          }
+        </div>
+
+        <button mat-flat-button type="submit" [disabled]="loginForm().submitting()">
+          {{ loginForm().submitting() ? 'Signing in…' : 'Sign in' }}
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</main>

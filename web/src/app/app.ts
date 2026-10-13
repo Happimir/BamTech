@@ -1,12 +1,28 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { Router, RouterOutlet } from '@angular/router';
+import { AuthStore } from './core/auth/auth.store';
 
 @Component({
-  imports: [RouterOutlet],
   selector: 'acts-root',
-  styleUrl: './app.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RouterOutlet, MatButtonModule, MatToolbarModule],
   templateUrl: './app.html',
+  styleUrl: './app.scss',
 })
 export class App {
-  protected readonly title = signal('web');
+  protected readonly auth = inject(AuthStore);
+  private readonly router = inject(Router);
+
+  protected readonly logoutFailed = signal(false);
+  protected readonly loggingOut = signal(false);
+
+  protected async logout(): Promise<void> {
+    this.loggingOut.set(true);
+    const revoked = await this.auth.logout();
+    this.loggingOut.set(false);
+    this.logoutFailed.set(!revoked);
+    if (revoked) await this.router.navigateByUrl('/login');
+  }
 }
