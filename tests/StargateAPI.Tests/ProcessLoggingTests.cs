@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using StargateAPI.Business.Data;
+using StargateAPI.Domain;
+using StargateAPI.Application.Logging;
+using StargateAPI.Infrastructure.Identity;
+using StargateAPI.Infrastructure.Persistence;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;

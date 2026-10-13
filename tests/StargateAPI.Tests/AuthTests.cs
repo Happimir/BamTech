@@ -6,7 +6,10 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using StargateAPI.Business.Data;
+using StargateAPI.Domain;
+using StargateAPI.Application.Logging;
+using StargateAPI.Infrastructure.Identity;
+using StargateAPI.Infrastructure.Persistence;
 using StargateAPI.Security;
 using StargateAPI.Tests.Infrastructure;
 

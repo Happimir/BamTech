@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using StargateAPI.Business.Domain;
-using StargateAPI.Business.Dtos;
+using StargateAPI.Domain;
+using StargateAPI.Application.Dtos;
 using StargateAPI.Security;
 
 namespace StargateAPI.Controllers

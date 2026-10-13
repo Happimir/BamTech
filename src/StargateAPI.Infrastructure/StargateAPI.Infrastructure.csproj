@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- EF Core + SQLite persistence, migrations, ASP.NET Core Identity and sessions:
+       implements the Application's abstractions. Never referenced by Domain or Application. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tests exercise the SQLite implementations directly; they stay internal otherwise. -->
+    <InternalsVisibleTo Include="StargateAPI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StargateAPI.Application\StargateAPI.Application.csproj" />
+    <ProjectReference Include="..\StargateAPI.Domain\StargateAPI.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

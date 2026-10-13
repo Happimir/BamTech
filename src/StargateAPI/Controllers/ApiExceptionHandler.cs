@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using StargateAPI.Business.Logging;
-using StargateAPI.Business.Results;
+using StargateAPI.Application.Abstractions;
+using StargateAPI.Application.Logging;
+using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Controllers
 {
@@ -13,16 +12,15 @@ namespace StargateAPI.Controllers
     /// </summary>
     public sealed class ApiExceptionHandler : IExceptionHandler
     {
-        // SQLITE_BUSY and SQLITE_LOCKED: another writer held the database beyond the timeout.
-        private const int SqliteBusy = 5;
-        private const int SqliteLocked = 6;
-
         private readonly IProblemDetailsService _problemDetails;
+        private readonly IPersistenceErrors _persistenceErrors;
         private readonly ILogger<ApiExceptionHandler> _logger;
 
-        public ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger)
+        public ApiExceptionHandler(
+            IProblemDetailsService problemDetails, IPersistenceErrors persistenceErrors, ILogger<ApiExceptionHandler> logger)
         {
             _problemDetails = problemDetails;
+            _persistenceErrors = persistenceErrors;
             _logger = logger;
         }
 
@@ -59,19 +57,16 @@ namespace StargateAPI.Controllers
             });
         }
 
-        private static (int Status, string Code, string Title) Classify(Exception exception) => exception switch
+        private (int Status, string Code, string Title) Classify(Exception exception) => exception switch
         {
             BadHttpRequestException badRequest =>
                 (badRequest.StatusCode, ErrorCodes.BadRequest, "The request was invalid."),
-            DbUpdateConcurrencyException =>
+            _ when _persistenceErrors.IsConcurrencyConflict(exception) =>
                 (StatusCodes.Status409Conflict, ErrorCodes.ConcurrencyConflict, "The record was changed by another request."),
-            _ when IsBusy(exception) =>
+            // Another writer held the database beyond the lock-wait limit.
+            _ when _persistenceErrors.IsBusy(exception) =>
                 (StatusCodes.Status503ServiceUnavailable, ErrorCodes.ServiceUnavailable, "The service is busy. Try again shortly."),
             _ => (StatusCodes.Status500InternalServerError, ErrorCodes.InternalError, "An unexpected error occurred.")
         };
-
-        private static bool IsBusy(Exception exception) =>
-            (exception as SqliteException ?? exception.InnerException as SqliteException) is
-            { SqliteErrorCode: SqliteBusy or SqliteLocked };
     }
 }

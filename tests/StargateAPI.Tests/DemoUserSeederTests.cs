@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using StargateAPI.Security;
+using StargateAPI.Infrastructure.Identity;
 
 namespace StargateAPI.Tests;
 

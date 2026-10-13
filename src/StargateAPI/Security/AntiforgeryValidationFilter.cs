@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
-using StargateAPI.Business.Logging;
+using StargateAPI.Application.Logging;
 using StargateAPI.Controllers;
 
 namespace StargateAPI.Security
