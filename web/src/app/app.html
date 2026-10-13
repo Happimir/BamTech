@@ -18,6 +18,6 @@
     <p class="logout-error" role="alert">Sign-out failed. You are still signed in; try again.</p>
   }
 }
-<main id="main-content" class="content" #main>
+<main id="main-content" [class.content]="!fullBleed()" #main>
   <router-outlet />
 </main>

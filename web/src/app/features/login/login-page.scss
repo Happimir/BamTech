@@ -1,6 +1,8 @@
 .login {
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
+  gap: var(--acts-space-4);
   min-height: 100dvh;
   padding: 16px;
 }
@@ -23,4 +25,9 @@
 .login-error {
   margin: 0 0 8px;
   color: var(--mat-sys-error);
+}
+
+.home-link {
+  color: var(--acts-primary);
+  font-weight: 500;
 }

@@ -30,6 +30,15 @@ async function signIn(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/people$/);
 }
 
+test('landing page', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Sign in to ACTS' })).toBeVisible();
+  await expectNoViolations(page, 'landing');
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expectNoViolations(page, 'landing (mobile)');
+});
+
 test('sign-in page and its error state', async ({ page }) => {
   await page.goto('/login');
   await expectNoViolations(page, 'sign-in');

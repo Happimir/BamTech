@@ -1,0 +1,36 @@
+<header class="landing-bar">
+  <span class="wordmark">ACTS</span>
+  <a mat-button routerLink="/login" class="bar-sign-in">Sign in</a>
+</header>
+
+<div class="landing">
+  <section class="intro" aria-labelledby="landing-title">
+    <p class="eyebrow">Astronaut Career Tracking System</p>
+    <h1 id="landing-title">Every astronaut's career, in one accurate record</h1>
+    <p class="lead">
+      ACTS tracks the people in the astronaut program: who they are, their current assignment, and every duty they
+      have held, from first posting to retirement and back.
+    </p>
+    <a mat-flat-button routerLink="/login" class="cta">Sign in to ACTS</a>
+  </section>
+
+  <section class="capabilities" aria-labelledby="capabilities-title">
+    <h2 id="capabilities-title" class="visually-hidden">What ACTS does</h2>
+    <ul>
+      @for (capability of capabilities; track capability.title) {
+        <li class="capability">
+          <h3>{{ capability.title }}</h3>
+          <p>{{ capability.description }}</p>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <section class="access" aria-labelledby="access-title">
+    <h2 id="access-title">Access</h2>
+    <p>
+      ACTS is available to program staff with an account. Readers can view people and their careers; administrators
+      can also record changes. Ask your administrator if you need access.
+    </p>
+  </section>
+</div>

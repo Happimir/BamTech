@@ -11,7 +11,14 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthStore } from './core/auth/auth.store';
 
@@ -28,6 +35,9 @@ export class App {
   private readonly injector = inject(Injector);
   private readonly main = viewChild.required<ElementRef<HTMLElement>>('main');
 
+  /** Pages that lay themselves out edge to edge (route data `fullBleed`) skip the content column. */
+  protected readonly fullBleed = signal(false);
+
   protected readonly logoutFailed = signal(false);
   protected readonly loggingOut = signal(false);
 
@@ -42,6 +52,7 @@ export class App {
         takeUntilDestroyed(),
       )
       .subscribe((event) => {
+        this.fullBleed.set(deepestRoute(this.router.routerState.snapshot.root).data['fullBleed'] === true);
         const path = event.urlAfterRedirects.split(/[?#]/, 1)[0];
         const isPageChange = previousPath !== null && path !== previousPath;
         previousPath = path;
@@ -59,7 +70,7 @@ export class App {
     const revoked = await this.auth.logout();
     this.loggingOut.set(false);
     this.logoutFailed.set(!revoked);
-    if (revoked) await this.router.navigateByUrl('/login');
+    if (revoked) await this.router.navigateByUrl('/');
   }
 
   /** Focuses the page heading, or the main region while the heading is still loading. */
@@ -70,4 +81,8 @@ export class App {
     target.setAttribute('tabindex', '-1');
     target.focus();
   }
+}
+
+function deepestRoute(route: ActivatedRouteSnapshot): ActivatedRouteSnapshot {
+  return route.firstChild ? deepestRoute(route.firstChild) : route;
 }
