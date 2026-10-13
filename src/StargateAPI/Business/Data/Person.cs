@@ -31,12 +31,15 @@ namespace StargateAPI.Business.Data
 
         public string? LastName { get; private set; }
 
-        /// <summary>Concurrency token, replaced on every aggregate change. Not an ID or a timestamp.</summary>
+        /// <summary>
+        /// Concurrency token, replaced on every aggregate change. Deliberately a random (v4) Guid:
+        /// it is not an ID, and a v7 value would disclose when the person last changed.
+        /// </summary>
         public Guid Version { get; private set; }
 
-        public virtual AstronautDetail? AstronautDetail { get; set; }
+        public virtual AstronautDetail? AstronautDetail { get; private set; }
 
-        public virtual ICollection<AstronautDuty> AstronautDuties { get; set; } = new HashSet<AstronautDuty>();
+        public virtual ICollection<AstronautDuty> AstronautDuties { get; private set; } = new HashSet<AstronautDuty>();
 
         /// <summary>Creates a new identity. Callers validate input first; namesakes are allowed.</summary>
         public static Person Create(string name, string? firstName = null, string? middleName = null, string? lastName = null)
@@ -44,14 +47,14 @@ namespace StargateAPI.Business.Data
             var person = new Person
             {
                 Id = Guid.CreateVersion7(),
-                Version = Guid.CreateVersion7()
+                Version = Guid.NewGuid()
             };
             person.SetNames(name, firstName, middleName, lastName);
             return person;
         }
 
         /// <summary>Marks an aggregate change so concurrent writers based on the old version conflict.</summary>
-        public void Touch() => Version = Guid.CreateVersion7();
+        public void Touch() => Version = Guid.NewGuid();
 
         private void SetNames(string name, string? firstName, string? middleName, string? lastName)
         {

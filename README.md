@@ -28,9 +28,11 @@ dotnet run --project src/StargateAPI --launch-profile https
 Tests use xUnit v3 on Microsoft.Testing.Platform (enabled in `global.json`).
 
 ```bash
-dotnet test                                        # everything
-dotnet test --filter-not-trait "Category=KnownDefect"   # baseline only
+dotnet test
 dotnet test --coverlet --coverlet-output-format cobertura --results-directory TestResults
 ```
 
-Tests marked `Category=KnownDefect` assert the intended behaviour and **fail against the supplied starter by design**. Each one documents a defect found in review, and they turn green as the fixes land.
+- Domain rules (`tests/.../Domain`) are tested directly, without HTTP or a database.
+- API tests run the real application against an isolated in-memory SQLite database per test. Concurrency tests use a temporary file database instead, because in-memory SQLite locks differently.
+- Temporary database files live under `%TEMP%/stargate-tests/<run>` and are deleted when the run ends; folders left by interrupted runs are removed by the next run. Tests never touch `starbase.db`.
+- The starter's defects were first captured as failing regression tests (Increment 1), which now pass. See the git history.

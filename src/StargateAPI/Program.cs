@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using StargateAPI.Business.Commands;
 using StargateAPI.Business.Data;
 using StargateAPI.Business.Results;
 using StargateAPI.Controllers;
@@ -44,9 +43,11 @@ builder.Services.AddDbContext<StargateContext>(options =>
 
 builder.Services.AddMediatR(cfg =>
 {
-    cfg.AddRequestPreProcessor<CreateAstronautDutyPreProcessor>();
     cfg.RegisterServicesFromAssemblies(typeof(Program).Assembly);
 });
+
+// Business "today" (UTC) for date rules; replaceable in tests.
+builder.Services.AddSingleton(TimeProvider.System);
 
 var app = builder.Build();
 
@@ -85,6 +86,13 @@ static string ResolveSqliteConnectionString(string? connectionString, string con
         && !Path.IsPathRooted(csb.DataSource))
     {
         csb.DataSource = Path.GetFullPath(Path.Combine(contentRootPath, csb.DataSource));
+    }
+
+    // Bound how long a command waits on another writer's lock (SQLITE_BUSY becomes a 503)
+    // unless the connection string sets its own value; the provider default is 30 seconds.
+    if (csb.DefaultTimeout == 30)
+    {
+        csb.DefaultTimeout = 5;
     }
 
     return csb.ToString();

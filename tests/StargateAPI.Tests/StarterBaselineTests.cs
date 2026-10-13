@@ -1,10 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using MediatR;
-using MediatR.Pipeline;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using StargateAPI.Business.Commands;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;
@@ -103,8 +99,8 @@ public class StarterBaselineTests
     [Fact]
     public async Task Duplicate_display_names_can_be_created()
     {
-        // Matches the settled identity design (stable IDs, namesakes allowed). In the starter it
-        // holds only because CreatePersonPreProcessor never runs; see the registration test below.
+        // Matches the settled identity design (stable IDs, namesakes allowed). In the starter this
+        // already held, because its CreatePersonPreProcessor was never registered with MediatR.
         await using var api = await TestApi.CreateAsync();
 
         (await api.Client.PostAsJsonAsync("/Person", "Alex Smith", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
@@ -112,21 +108,5 @@ public class StarterBaselineTests
 
         var count = await api.WithContextAsync(context => context.People.CountAsync(p => p.Name == "Alex Smith"));
         Assert.Equal(2, count);
-    }
-
-    [Fact]
-    public async Task Mediator_registers_preprocessors_as_observed_in_the_starter()
-    {
-        await using var api = await TestApi.CreateAsync();
-        await using var scope = api.Services.CreateAsyncScope();
-
-        var dutyPreProcessors = scope.ServiceProvider.GetServices<IRequestPreProcessor<CreateAstronautDuty>>().ToList();
-        var personPreProcessors = scope.ServiceProvider.GetServices<IRequestPreProcessor<CreatePerson>>().ToList();
-        var dutyBehaviors = scope.ServiceProvider
-            .GetServices<IPipelineBehavior<CreateAstronautDuty, CreateAstronautDutyResult>>().ToList();
-
-        Assert.Single(dutyPreProcessors);
-        Assert.Empty(personPreProcessors);
-        Assert.Single(dutyBehaviors.OfType<RequestPreProcessorBehavior<CreateAstronautDuty, CreateAstronautDutyResult>>());
     }
 }

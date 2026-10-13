@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using StargateAPI.Business.Commands;
+using StargateAPI.Business.Dtos;
 using StargateAPI.Business.Queries;
 
 namespace StargateAPI.Controllers
@@ -25,11 +26,22 @@ namespace StargateAPI.Controllers
         public Task<IActionResult> GetAstronautDutiesByName(string name, CancellationToken cancellationToken) =>
             GetDutiesCore(name, cancellationToken);
 
+        /// <summary>
+        /// Legacy name-based duty append. The name is resolved inside the write transaction; an
+        /// ambiguous name is rejected before anything changes. Prefer POST /api/people/{id}/duties.
+        /// </summary>
         [HttpPost("")]
-        public async Task<IActionResult> CreateAstronautDuty([FromBody] CreateAstronautDuty request, CancellationToken cancellationToken)
+        public async Task<IActionResult> CreateAstronautDuty([FromBody] LegacyAssignDutyDto request, CancellationToken cancellationToken)
         {
-            var result = await _mediator.Send(request, cancellationToken);
-            return Ok(result);
+            var result = await _mediator.Send(new AssignDuty(
+                PersonId: null,
+                request.Name,
+                request.Rank,
+                request.DutyTitle,
+                request.DutyStartDate,
+                request.ExpectedVersion), cancellationToken);
+            return this.ToActionResult(result, created =>
+                Created($"/api/people/{created.PersonId}/duties/{created.Id}", created));
         }
 
         private async Task<IActionResult> GetDutiesCore(string? name, CancellationToken cancellationToken)
