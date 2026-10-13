@@ -61,3 +61,5 @@ static string ResolveSqliteConnectionString(string? connectionString, string con
     return csb.ToString();
 }
 
+// Exposes the implicit Program class to WebApplicationFactory in the test project.
+public partial class Program { }
