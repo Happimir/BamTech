@@ -163,6 +163,34 @@ src/StargateAPI                 API host and composition root
 - **The API project** is the composition root. Business controllers only send MediatR requests. The sign-in controller and session validation use Identity from Infrastructure directly, because they are ASP.NET plumbing.
 - **The rule is enforced, not just intended:** `ArchitectureTests` checks the compiled assemblies. Domain references nothing; Application references only Domain and never SQLite; Infrastructure never references the API; business controllers never depend on an Infrastructure type. Each test was shown to fail when its rule was broken.
 
+The Angular app (`web/src/app`) is grouped by feature, and within a feature by role. Each spec sits beside the file it tests:
+
+```
+app.ts, app.config.ts, app.routes.ts   shell, providers, lazy-loaded routes
+core/                                  app-wide, used by every feature
+  data-access/                         API models and transport (PeopleApi, AuthApi)
+  auth/                                AuthStore and route guards
+  http/                                error classification, session-expiry interceptor
+  utils/                               calendar dates, safe return URLs
+shared/                                used by more than one feature
+  ui/status-badge/                     the Active / Retired / Not assigned badge
+  utils/                               personStatus
+features/
+  people/                              the directory
+    people-page/                       the page component
+    data-access/                       PeopleStore (URL-driven paging and search)
+    utils/                             query parsing, table rows
+  person-detail/                       one person's record
+    person-detail-page/                the page component
+    data-access/                       PersonDetailStore (one /duties snapshot)
+    utils/                             timeline, return to the directory
+  admin/                               write dialogs (Admin only)
+    person-dialog/, duty-dialog/       one folder per dialog
+    shared/                            write-failure handling and dialog styles
+  status-pages/                        forbidden, not found, unavailable
+  landing/, login/                     single-component pages
+```
+
 ## Design decisions
 
 The assignment leaves several points open or in tension with each other, and some ambiguity is part of the exercise. Where it is silent or a literal reading would weaken the system, I followed established practice for this kind of record-keeping system. Each such choice is documented below with its reasoning, and enforced by tests.
