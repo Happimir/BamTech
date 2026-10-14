@@ -4,7 +4,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Admin dialogs to add people, rename them and add duties, including retirement. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 141 API tests at 94.0% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
+- **Evidence:** 145 API tests at 94.1% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -131,6 +131,7 @@ src/StargateAPI                 API host and composition root
   │                             controllers, HTTP middleware, sign-in and security, Program.cs,
   │                             optional hosting of the built UI (Hosting/SpaHosting)
   ├──► StargateAPI.Application  use cases: MediatR commands and queries, DTOs, logging context,
+  │       │                     services the write handlers share (IAuditTrail, IAstronautCareers),
   │       │                     and the persistence abstractions they need (IStargateDbContext,
   │       │                     IWriteTransactions, IPersistenceErrors, IRequestOutcomeLog)
   │       └──► StargateAPI.Domain   entities and career rules (CareerTransitions, NameNormalizer,
@@ -140,7 +141,12 @@ src/StargateAPI                 API host and composition root
           └──► Application, Domain  ASP.NET Core Identity accounts and sessions
 ```
 
-- **Domain** has no dependencies at all.
+- **Domain** has no dependencies at all. It holds the business rules, as plain code tested without a database: career transitions, input validation, name matching, and the person's own invariants (version checks, name replacement).
+- **Handlers are thin orchestrators.** Each validates, takes the write lock, loads, applies the domain rules, and saves the change with its audit. What several handlers share is a service with an interface:
+  - `IAuditTrail` stages the audit row that commits with the change;
+  - `IAstronautCareers` loads the career state and stages a new duty in the order the one-open-duty index needs.
+
+  Logic used by only one handler stays in that handler instead of moving behind an interface with a single caller.
 - **Application** may use EF Core's general API (sets, LINQ), but never SQLite. Two SQLite specifics sit behind interfaces implemented in Infrastructure: the write lock taken at the start of a transaction, and unique-violation and busy error codes. Changing the database provider would mean changing Infrastructure only.
 - **The API project** is the composition root. Business controllers only send MediatR requests. The sign-in controller and session validation use Identity from Infrastructure directly, because they are ASP.NET plumbing.
 - **The rule is enforced, not just intended:** `ArchitectureTests` checks the compiled assemblies. Domain references nothing; Application references only Domain and never SQLite; Infrastructure never references the API; business controllers never depend on an Infrastructure type. Each test was shown to fail when its rule was broken.
@@ -285,7 +291,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-14: **141 tests pass; line coverage 94.0% (1493/1588), branch coverage 83.3% (354/425)**. By layer: Domain 98.7%, Application 96.5%, API 93.3%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
+Measured on 2026-10-14: **145 tests pass; line coverage 94.1% (1506/1601), branch coverage 83.3% (349/419)**. By layer: Domain 98.8%, Application 96.6%, API 93.3%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
