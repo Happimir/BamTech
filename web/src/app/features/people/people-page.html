@@ -1,6 +1,11 @@
 <header class="page-header">
-  <h1>People</h1>
-  <p class="purpose">Find a person and review their astronaut career.</p>
+  <div>
+    <h1>People</h1>
+    <p class="purpose">Find a person and review their astronaut career.</p>
+  </div>
+  @if (canCreate()) {
+    <button mat-flat-button type="button" class="add-person" (click)="addPerson()">Add person</button>
+  }
 </header>
 
 <section class="directory" aria-labelledby="results-heading">

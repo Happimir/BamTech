@@ -31,12 +31,15 @@ test('sign-in, protected read and sign-out work through the same-origin proxy', 
   expect(xsrf).toMatchObject({ secure: true, httpOnly: false, sameSite: 'Strict' });
   expect(await page.evaluate(() => document.cookie)).not.toContain('__Host-acts');
 
-  // The protected read renders names (sample data from global setup). Sign-in itself already
-  // proved the XSRF header on a mutating request: without it, login fails with csrf_failed.
+  // The protected read renders the names it returned (whoever sorts first: other tests and the
+  // demo add people). Sign-in itself already proved the XSRF header on a mutating request:
+  // without it, login fails with csrf_failed.
   const read = page.waitForResponse((r) => r.url().includes('/api/people?'));
   await page.reload();
-  expect((await read).status()).toBe(200);
-  await expect(page.getByRole('link', { name: 'Grace Okonkwo', exact: true })).toBeVisible();
+  const response = await read;
+  expect(response.status()).toBe(200);
+  const firstName: string = (await response.json()).items[0].name;
+  await expect(page.getByRole('link', { name: firstName, exact: true }).first()).toBeVisible();
 
   // Sign-out revokes server-side; a replayed copy of the old session cookie is rejected
   // and the app returns to sign-in instead of showing protected data.

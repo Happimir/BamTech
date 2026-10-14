@@ -51,6 +51,16 @@
             {{ idCopied() ? 'Copied' : 'Copy ID' }}
           </button>
         </p>
+        @if (canRename() || canAddDuty()) {
+          <div class="action-row">
+            @if (canAddDuty()) {
+              <button mat-flat-button type="button" (click)="addDuty()">Add duty</button>
+            }
+            @if (canRename()) {
+              <button mat-stroked-button type="button" (click)="rename()">Rename</button>
+            }
+          </div>
+        }
       </header>
 
       <div class="cards">

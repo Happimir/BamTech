@@ -84,6 +84,38 @@ test('person detail states', async ({ page }) => {
   await expectNoViolations(page, 'person not found');
 });
 
+test('admin dialogs: pristine, with errors and with previews', async ({ page }) => {
+  await signIn(page);
+  await page.getByRole('button', { name: 'Add person' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Full name')).toBeFocused();
+  await expectNoViolations(page, 'add person');
+  await dialog.getByRole('button', { name: 'Create person' }).click();
+  await expect(dialog.getByText('Enter the full name to display.')).toBeVisible();
+  await dialog.getByLabel('First name').fill('Ada');
+  await expect(dialog.getByRole('button', { name: 'Use as full name' })).toBeVisible();
+  await expectNoViolations(page, 'add person with errors and a suggestion');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  // Focus returns to the control that opened the dialog.
+  await expect(page.getByRole('button', { name: 'Add person' })).toBeFocused();
+
+  await page.getByLabel('Name').fill('Carlos');
+  await page.getByLabel('Name').press('Enter');
+  await page.getByRole('link', { name: 'Carlos Mendes', exact: true }).click();
+  await page.getByRole('button', { name: 'Add duty' }).click();
+  await dialog.getByRole('radio', { name: 'Retire' }).check();
+  await dialog.getByLabel('Start date').fill('1/1/2016');
+  await dialog.getByLabel('Start date').blur();
+  await expect(dialog.getByText('when the current duty started')).toBeVisible();
+  await expectNoViolations(page, 'add duty with a date error');
+  await dialog.getByLabel('Start date').fill('6/1/2026');
+  await expect(dialog.locator('.preview')).toContainText('Career ends May 31, 2026.');
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expectNoViolations(page, 'add duty retirement preview (mobile)');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('button', { name: 'Add duty' })).toBeFocused();
+});
+
 test('status pages', async ({ page }) => {
   await signIn(page);
   await page.goto('/forbidden');

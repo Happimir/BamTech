@@ -1,0 +1,98 @@
+<h2 mat-dialog-title>Add duty</h2>
+<form [formRoot]="dutyForm" class="dialog-form">
+  <mat-dialog-content>
+    <p class="context">
+      For <strong>{{ person()?.name }}</strong>. The previous duty's end date and the career dates are
+      worked out from the start date.
+    </p>
+
+    <mat-form-field>
+      <mat-label>Rank</mat-label>
+      <input matInput [formField]="dutyForm.rank" autocomplete="off" />
+      @for (error of dutyForm.rank().errors(); track error.kind) {
+        <mat-error>{{ error.message }}</mat-error>
+      }
+    </mat-form-field>
+
+    @if (canRetire() || dutyForm.kind().value() === 'retire') {
+      <div class="kind">
+        <span id="kind-label" class="kind-label">Entry</span>
+        <mat-radio-group [formField]="dutyForm.kind" aria-labelledby="kind-label">
+          <mat-radio-button value="duty">Duty</mat-radio-button>
+          <mat-radio-button value="retire">Retire</mat-radio-button>
+        </mat-radio-group>
+        @for (error of dutyForm.kind().errors(); track error.kind) {
+          <p class="field-error">{{ error.message }}</p>
+        }
+      </div>
+    }
+
+    @if (!dutyForm.dutyTitle().hidden()) {
+      <mat-form-field>
+        <mat-label>Duty title</mat-label>
+        <input
+          matInput
+          [formField]="dutyForm.dutyTitle"
+         
+          autocomplete="off"
+        />
+        @for (error of dutyForm.dutyTitle().errors(); track error.kind) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
+      </mat-form-field>
+    }
+
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Start date</mat-label>
+      <input
+        matInput
+        [matDatepicker]="picker"
+        [formField]="dutyForm.dutyStartDate"
+        [min]="minDate()"
+        [max]="maxDate()"
+        autocomplete="off"
+      />
+      <mat-datepicker-toggle matIconSuffix [for]="picker" />
+      <mat-datepicker #picker />
+      @if (businessDateLabel(); as today) {
+        <mat-hint>Latest allowed: {{ today }}, today's business date ({{ businessTimeZone() }})</mat-hint>
+      } @else if (metadataFailed()) {
+        <mat-hint>Today's business date is unavailable. The date is checked when you save.</mat-hint>
+      }
+      @for (message of startDateMessages(); track message) {
+        <mat-error>{{ message }}</mat-error>
+      }
+    </mat-form-field>
+
+    @if (previews().length) {
+      <div class="preview" aria-live="polite">
+        <p class="preview-title">When saved</p>
+        <ul>
+          @for (line of previews(); track line) {
+            <li>{{ line }}</li>
+          }
+        </ul>
+      </div>
+    }
+
+  </mat-dialog-content>
+
+  <!-- Outside the scrolling content: the outcome and its action are always in view. -->
+  <div class="notice-slot" role="alert">
+    @if (notice(); as current) {
+      <div class="notice" [class.notice--info]="current.kind === 'reloaded'">
+        <p>{{ current.message }}</p>
+        @if (current.kind === 'stale') {
+          <button mat-stroked-button type="button" (click)="reload()">Reload</button>
+        }
+      </div>
+    }
+  </div>
+
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" mat-dialog-close [disabled]="dutyForm().submitting()">Cancel</button>
+    <button mat-flat-button type="submit" class="save-button" [disabled]="dutyForm().submitting()">
+      {{ dutyForm().submitting() ? 'Saving…' : saveLabel() }}
+    </button>
+  </mat-dialog-actions>
+</form>

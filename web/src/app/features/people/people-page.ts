@@ -1,16 +1,21 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, linkedSignal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { form, FormField, FormRoot, maxLength } from '@angular/forms/signals';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
+import { AuthStore } from '../../core/auth/auth.store';
+import { PersonDialog, PersonDialogMode, PersonDialogResult } from '../admin/person-dialog';
+import { ADMIN_DIALOG_CONFIG } from '../admin/write-outcome';
 import { DirectoryReturnState } from '../person-detail/directory-return';
 import { MAX_NAME_LENGTH, PAGE_SIZE_OPTIONS, toQueryParams } from './people-query';
 import { PeopleStore } from './people.store';
@@ -107,5 +112,32 @@ export class PeoplePage {
 
   protected onPage(event: PageEvent): void {
     void this.store.changePage(event.pageIndex, event.pageSize);
+  }
+
+  /** Only accounts that may create people see the action; a Reader sees none. */
+  private readonly capabilities = inject(AuthStore).capabilities;
+  protected readonly canCreate = computed(() => this.capabilities().has('People.Write'));
+
+  private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
+  private openDialog: MatDialogRef<unknown> | undefined;
+
+  constructor() {
+    // Leaving the page (including on session expiry) never strands a dialog over another page.
+    inject(DestroyRef).onDestroy(() => this.openDialog?.close());
+  }
+
+  protected addPerson(): void {
+    const ref = this.dialog.open<PersonDialog, PersonDialogMode, PersonDialogResult>(PersonDialog, {
+      ...ADMIN_DIALOG_CONFIG,
+      data: 'create',
+    });
+    this.openDialog = ref;
+    ref.afterClosed().subscribe((result) => {
+      this.openDialog = undefined;
+      if (result?.kind !== 'created') return;
+      this.snackBar.open('Person created', undefined, { duration: 4000 });
+      void this.router.navigate(['/people', result.person.id], { state: this.returnState() });
+    });
   }
 }
