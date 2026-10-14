@@ -3,8 +3,8 @@
 Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargate API, corrected and extended, plus an Angular UI.
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
-- **UI** (`web/`, Angular 22 + Angular Material). A people directory with search and server paging; person detail with the current assignment and a newest-first duty timeline. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 132 API tests at 93.9% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 19 browser tests against the real API.
+- **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
+- **Evidence:** 132 API tests at 93.9% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 22 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -89,7 +89,7 @@ With the API running, `cd web && npm run demo:api` walks through the rules again
 6. Two people with the same name: by-name reads and writes are refused with `ambiguous_name` (nothing written); search returns both with their IDs, and the duty is added by ID.
 7. The `traceId` from the refused request, with the SQL that finds its `ProcessLog` row and the person's change history.
 
-In the UI (`npm run seed:sample` first), sign in as `admin` or `reader`. Then:
+In the UI (`npm run seed:sample` first), open https://localhost:4200: an introduction to ACTS for visitors who are not signed in. Choose **Sign in to ACTS** and sign in as `admin` or `reader`. Then:
 
 - search "Gr" and open **Grace Okonkwo**: a reactivated career, with no current career end, the 2020–2024 retirement kept in the timeline, and a "Returned to active duty" note;
 - open **Harold Jensen** to see a retired career end;
@@ -281,7 +281,7 @@ Test isolation:
 - API tests run the real application against an isolated in-memory SQLite database per test. Concurrency tests use a temporary file database instead, because in-memory SQLite locks differently.
 - Temporary database files live under `%TEMP%/stargate-tests/<run>` and are deleted when the run ends. Folders left by interrupted runs are removed by the next run. Tests never touch `starbase.db`.
 
-The UI has 79 unit tests (`npm test`: stores, guards, date formatting, timeline, return-URL safety) and 19 browser tests (`npm run e2e`). The browser tests cover sign-in and session revocation, search and paging, person detail states, the Reader experience, accessibility and 200% zoom. See [Run the web UI](#run-the-web-ui).
+The UI has 79 unit tests (`npm test`: stores, guards, date formatting, timeline, return-URL safety) and 22 browser tests (`npm run e2e`). The browser tests cover the introduction page, sign-in and session revocation, search and paging, person detail states, the Reader experience, accessibility and 200% zoom. See [Run the web UI](#run-the-web-ui).
 
 ## Limitations and deferred scope
 
