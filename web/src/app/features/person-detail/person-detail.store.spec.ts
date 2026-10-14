@@ -32,11 +32,12 @@ const retiredSnapshot: PersonDuties = {
       currentDutyStartDate: '2023-01-01',
       careerStartDate: '2012-03-01',
       careerEndDate: '2022-12-31',
+      status: 'retired',
     },
   },
   duties: [
-    { id: 'd2', rank: 'Lieutenant', dutyTitle: 'RETIRED', dutyStartDate: '2023-01-01', dutyEndDate: null },
-    { id: 'd1', rank: 'Ensign', dutyTitle: 'Pilot', dutyStartDate: '2012-03-01', dutyEndDate: '2022-12-31' },
+    { id: 'd2', rank: 'Lieutenant', dutyTitle: 'RETIRED', dutyStartDate: '2023-01-01', dutyEndDate: null, isRetirement: true },
+    { id: 'd1', rank: 'Ensign', dutyTitle: 'Pilot', dutyStartDate: '2012-03-01', dutyEndDate: '2022-12-31', isRetirement: false },
   ],
 };
 

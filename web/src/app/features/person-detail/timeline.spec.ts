@@ -1,12 +1,14 @@
 import { Duty } from '../../core/api/api.models';
 import { buildTimeline } from './timeline';
 
+// Flags retirement the way the API does for these fixtures (canonical RETIRED title).
 const duty = (id: string, dutyTitle: string, dutyStartDate: string, dutyEndDate: string | null): Duty => ({
   id,
   rank: 'Captain',
   dutyTitle,
   dutyStartDate,
   dutyEndDate,
+  isRetirement: dutyTitle === 'RETIRED',
 });
 
 describe('buildTimeline', () => {
@@ -38,6 +40,15 @@ describe('buildTimeline', () => {
       duty('d1', 'Pilot', '2012-03-01', '2022-12-31'),
     ]);
     expect(current).toMatchObject({ title: 'Retired', isRetirement: true, isCurrent: true, returnedToActiveDuty: false });
+  });
+
+  it("follows the API's retirement flag, never the title", () => {
+    const [current, previous] = buildTimeline([
+      duty('d2', 'Pilot', '2024-01-01', null),
+      { ...duty('d1', 'Retired', '2020-01-01', '2023-12-31'), isRetirement: true },
+    ]);
+    expect(previous).toMatchObject({ title: 'Retired', isRetirement: true });
+    expect(current.returnedToActiveDuty).toBe(true);
   });
 
   it('returns an empty timeline for a person with no duties', () => {

@@ -1,6 +1,5 @@
 import { Duty } from '../../core/api/api.models';
 import { formatCalendarDate } from '../../core/dates/calendar-date';
-import { RETIRED_DUTY_TITLE } from '../people/person-status';
 
 export interface TimelineDate {
   /** YYYY-MM-DD for the `<time datetime>` attribute. */
@@ -10,7 +9,7 @@ export interface TimelineDate {
 
 export interface TimelineItem {
   id: string;
-  /** Display title; the canonical RETIRED title reads as "Retired". */
+  /** Display title; a retirement reads as "Retired". */
   title: string;
   rank: string;
   isRetirement: boolean;
@@ -32,7 +31,7 @@ const date = (iso: string): TimelineDate => ({ iso, label: formatCalendarDate(is
  */
 export function buildTimeline(dutiesNewestFirst: readonly Duty[]): TimelineItem[] {
   return dutiesNewestFirst.map((duty, index) => {
-    const isRetirement = duty.dutyTitle === RETIRED_DUTY_TITLE;
+    const isRetirement = duty.isRetirement;
     const previous = dutiesNewestFirst[index + 1];
     return {
       id: duty.id,
@@ -42,7 +41,7 @@ export function buildTimeline(dutiesNewestFirst: readonly Duty[]): TimelineItem[
       isCurrent: duty.dutyEndDate === null,
       start: date(duty.dutyStartDate),
       end: duty.dutyEndDate === null ? null : date(duty.dutyEndDate),
-      returnedToActiveDuty: !isRetirement && previous?.dutyTitle === RETIRED_DUTY_TITLE,
+      returnedToActiveDuty: !isRetirement && previous?.isRetirement === true,
     };
   });
 }

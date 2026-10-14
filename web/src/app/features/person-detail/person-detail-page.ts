@@ -23,7 +23,6 @@ import { DutyDialog, DutySaved } from '../admin/duty-dialog';
 import { PersonDialog, PersonDialogMode, PersonDialogResult } from '../admin/person-dialog';
 import { ADMIN_DIALOG_CONFIG } from '../admin/write-outcome';
 import { StatusBadge } from '../people/status-badge';
-import { RETIRED_DUTY_TITLE } from '../people/person-status';
 import { directoryReturnUrl } from './directory-return';
 import { PersonDetailStore } from './person-detail.store';
 
@@ -59,7 +58,7 @@ export class PersonDetailPage {
   protected readonly summary = computed(() => {
     const astronaut = this.store.person()?.astronaut;
     if (!astronaut) return null;
-    const retired = astronaut.currentDutyTitle === RETIRED_DUTY_TITLE;
+    const retired = astronaut.status === 'retired';
     return {
       rank: astronaut.currentRank,
       duty: retired ? 'Retired' : astronaut.currentDutyTitle,

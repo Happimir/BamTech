@@ -26,12 +26,13 @@ const active: PersonDetail = {
     currentDutyStartDate: '2024-06-01',
     careerStartDate: '2015-01-01',
     careerEndDate: null,
+    status: 'active',
   },
 };
 
 const retired: PersonDetail = {
   ...active,
-  astronaut: { ...active.astronaut!, currentDutyTitle: 'RETIRED', careerEndDate: '2024-05-31' },
+  astronaut: { ...active.astronaut!, currentDutyTitle: 'RETIRED', careerEndDate: '2024-05-31', status: 'retired' },
 };
 
 const unassigned: PersonDetail = { ...active, astronaut: null };

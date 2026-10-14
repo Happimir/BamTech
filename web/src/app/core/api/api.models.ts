@@ -10,12 +10,16 @@ export interface AuthMe {
   capabilities: Capability[];
 }
 
+/** Decided by the API (rule 6); never re-derived from duty titles in the client. */
+export type CareerStatus = 'active' | 'retired';
+
 export interface AstronautSummary {
   currentRank: string;
   currentDutyTitle: string;
   currentDutyStartDate: string;
   careerStartDate: string;
   careerEndDate: string | null;
+  status: CareerStatus;
 }
 
 export interface PersonSummary {
@@ -45,6 +49,8 @@ export interface Duty {
   dutyTitle: string;
   dutyStartDate: string;
   dutyEndDate: string | null;
+  /** True for a retirement duty, as decided by the API. */
+  isRetirement: boolean;
 }
 
 /** A person and their duty history, newest first, read as one consistent snapshot. */

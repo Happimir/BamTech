@@ -20,14 +20,15 @@ describe('toPersonRows', () => {
     expect(unique.namesakeHint).toBeNull();
   });
 
-  it('derives status from the current duty, with no fabricated values for unassigned people', () => {
-    const [retired, active, unassigned] = toPersonRows([
+  it("shows the API's status, with no fabricated values for unassigned people", () => {
+    const [retired, active, unassigned, flaggedOnly] = toPersonRows([
       person('a', 'R', {
         currentRank: 'Major',
         currentDutyTitle: 'RETIRED',
         currentDutyStartDate: '2019-11-30',
         careerStartDate: '2008-05-19',
         careerEndDate: '2019-11-29',
+        status: 'retired',
       }),
       person('b', 'A', {
         currentRank: 'Captain',
@@ -35,12 +36,23 @@ describe('toPersonRows', () => {
         currentDutyStartDate: '2024-02-12',
         careerStartDate: '2010-01-04',
         careerEndDate: null,
+        status: 'active',
       }),
       person('c', 'U'),
+      // The API decides retirement (rule 6); the client never inspects the title for it.
+      person('d', 'F', {
+        currentRank: 'Major',
+        currentDutyTitle: 'Retired',
+        currentDutyStartDate: '2019-11-30',
+        careerStartDate: '2008-05-19',
+        careerEndDate: '2019-11-29',
+        status: 'retired',
+      }),
     ]);
 
     expect(retired.status).toBe('retired');
     expect(active).toMatchObject({ status: 'active', rank: 'Captain', since: 'Feb 12, 2024' });
     expect(unassigned).toMatchObject({ status: 'not-assigned', rank: null, dutyTitle: null, since: null });
+    expect(flaggedOnly.status).toBe('retired');
   });
 });
