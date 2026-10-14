@@ -4,7 +4,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Admin dialogs to add people, rename them and add duties, including retirement. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 145 API tests at 94.1% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
+- **Evidence:** 156 API tests at 94.1% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -167,7 +167,7 @@ Rule 1 ("a person is uniquely identified by their name") is deliberately replace
 | Selecting a person | By name | By ID (`/api/people/{id}`); search returns every match with its ID |
 | Matching | Exact SQL text | Trimmed, Unicode-normalized, case-insensitive; accents and inner spaces are kept |
 
-A version token (`version` / `expectedVersion`) protects updates against stale writes. Renaming by name never creates a person: a retried rename of a name that no longer exists gets 404.
+A version token (`version` / `expectedVersion`) protects updates against stale writes. Renaming by name never creates a person: a retried rename of a name that no longer exists gets 404. Names are stored in Unicode NFC form, so re-sending the same name with its accents encoded differently is not a change.
 
 ### The rules
 
@@ -220,13 +220,19 @@ JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Errors are P
 | `GET /api/people/{id}/duties` | People.Read | The person and their duties, newest first, as one consistent snapshot |
 | `GET /api/people/{id}/duties/{dutyId}` | People.Read | One duty |
 | `POST /api/people` `{name, firstName?, middleName?, lastName?}` | People.Write | Create (namesakes allowed); 201 with Location |
-| `PUT /api/people/{id}` `{name, …parts, version}` | People.Write | Replace names; a stale `version` gets 409 |
+| `PUT /api/people/{id}` `{name, …parts, version}` | People.Write | Replace names; a missing `version` gets 428 `version_required`, a stale one 409 |
 | `POST /api/people/{id}/duties` `{rank, dutyTitle, dutyStartDate, expectedVersion?}` | Duties.Write | Add a duty; 201 with Location |
 | `GET /api/metadata` | People.Read | Business date and time zone (UTC) |
-| `GET /Person`, `GET /Person/{name}`, `POST /Person`, `PUT /Person/by-name?name=` | as above | The assignment's name-based operations, kept for compatibility |
+| `GET /Person?name` | People.Read | **Every** person, as a JSON array streamed while it is read, in directory order; optional `name` prefix |
+| `GET /Person/{name}`, `POST /Person`, `PUT /Person/by-name?name=` `{name, expectedVersion?}` | as above | Get, create and add/update a person by name |
 | `GET /AstronautDuty/{name}`, `POST /AstronautDuty` `{name, rank, dutyTitle, dutyStartDate}` | as above | Name-based duty history and duty creation |
 
-Error codes: `validation`, `not_found`, `ambiguous_name`, `chronology_conflict`, `first_duty_retirement`, `already_retired`, `concurrency_conflict`, `version_required`, `service_unavailable` (503, retry later), `unauthenticated` (401), `forbidden` (403), `csrf_failed`, `invalid_credentials`, `bad_request`, `internal_error`.
+Error codes: `validation`, `not_found`, `ambiguous_name`, `chronology_conflict`, `first_duty_retirement`, `already_retired`, `concurrency_conflict`, `version_required` (428), `service_unavailable` (503, retry later), `unauthenticated` (401), `forbidden` (403), `csrf_failed`, `invalid_credentials`, `bad_request`, `internal_error`.
+
+**The assignment's routes keep their URLs, not their exact contract.** The starter's `success`/`message`/`responseCode` envelope is gone: successes return the resource and errors are ProblemDetails, as on every other route. Unknown body fields are a 400.
+- `GET /Person` returns everyone, as the assignment asks. It streams rows from the database as it writes the response, so server memory stays flat however many people there are. The UI uses the paged `/api/people` instead, because a screen should never load everyone. Once streaming has started the 200 is already sent, so a database failure part-way ends the response early (logged as `Failed`) instead of returning an error body.
+- `POST /AstronautDuty` still accepts the starter's date-time form (`2024-03-10T00:00:00`, with or without an offset) as well as `YYYY-MM-DD`. The date is taken exactly as written, never converted between time zones. The ID route accepts `YYYY-MM-DD` only.
+- A missing version is 428 `version_required` on both rename routes; a stale one is 409 `concurrency_conflict`.
 
 ## Sign-in and permissions
 
@@ -291,7 +297,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-14: **145 tests pass; line coverage 94.1% (1506/1601), branch coverage 83.3% (349/419)**. By layer: Domain 98.8%, Application 96.6%, API 93.3%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
+Measured on 2026-10-14: **156 tests pass; line coverage 94.1% (1542/1638), branch coverage 83.6% (358/428)**. By layer: Domain 98.8%, Application 96.5%, API 93.4%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
@@ -346,4 +352,5 @@ The browser tests create uniquely named people (`E2E Admin …`) on each run, as
 **Known untested paths:**
 - The Cancelled and escaped-exception branches of request-outcome logging.
 - A rename racing a duty append. Both take the same write lock, so they serialize by construction.
+- A database failure after `GET /Person` has started streaming (the response ends early).
 - Lock contention under load.
