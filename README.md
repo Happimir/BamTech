@@ -4,7 +4,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 132 API tests at 93.9% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 22 browser tests against the real API.
+- **Evidence:** 141 API tests at 94.0% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 22 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -77,6 +77,21 @@ npm run build        # production build to web/dist
 npm run e2e
 ```
 
+### Or: the built UI served by the API (no Node.js at run time)
+
+The dev server above is the development flow. To view the app from a single process, build the UI once and start the API alone:
+
+```bash
+cd web && npm ci && npm run build && cd ..   # output: web/dist/web/browser
+dotnet run --project src/StargateAPI --launch-profile https   # https://localhost:7204
+```
+
+- The API serves the UI from the folder set in `Spa:RootPath` (`appsettings.json`, relative to `src/StargateAPI`). If that folder has no `index.html`, the API runs exactly as before, with no UI.
+- Deep links such as `/people/{id}` return `index.html` and the Angular router takes over. Paths under `/api`, `/auth`, `/swagger`, `/Person` and `/AstronautDuty` never do, so their 404s stay API problem responses.
+- Page and asset loads are not written to the process log, which records API operations only.
+- The browser tests run against it with `E2E_BASE_URL=https://localhost:7204 npm run e2e`.
+- Rebuild the UI after changing it; the API serves whatever is in the folder.
+
 ## Demonstration
 
 With the API running, `cd web && npm run demo:api` walks through the rules against the real API with fresh, uniquely named people, printing each request and its outcome:
@@ -89,7 +104,7 @@ With the API running, `cd web && npm run demo:api` walks through the rules again
 6. Two people with the same name: by-name reads and writes are refused with `ambiguous_name` (nothing written); search returns both with their IDs, and the duty is added by ID.
 7. The `traceId` from the refused request, with the SQL that finds its `ProcessLog` row and the person's change history.
 
-In the UI (`npm run seed:sample` first), open https://localhost:4200: an introduction to ACTS for visitors who are not signed in. Choose **Sign in to ACTS** and sign in as `admin` or `reader`. Then:
+In the UI (`npm run seed:sample` first), open https://localhost:4200 (or https://localhost:7204 with the built UI): an introduction to ACTS for visitors who are not signed in. Choose **Sign in to ACTS** and sign in as `admin` or `reader`. Then:
 
 - search "Gr" and open **Grace Okonkwo**: a reactivated career, with no current career end, the 2020–2024 retirement kept in the timeline, and a "Returned to active duty" note;
 - open **Harold Jensen** to see a retired career end;
@@ -103,7 +118,8 @@ The API is split into onion-architecture layers. Every reference points inward, 
 
 ```
 src/StargateAPI                 API host and composition root
-  │                             controllers, HTTP middleware, sign-in and security, Program.cs
+  │                             controllers, HTTP middleware, sign-in and security, Program.cs,
+  │                             optional hosting of the built UI (Hosting/SpaHosting)
   ├──► StargateAPI.Application  use cases: MediatR commands and queries, DTOs, logging context,
   │       │                     and the persistence abstractions they need (IStargateDbContext,
   │       │                     IWriteTransactions, IPersistenceErrors, IRequestOutcomeLog)
@@ -263,7 +279,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-13, after the layer split: **132 tests pass; line coverage 93.9% (1457/1552), branch coverage 82.7% (340/411)**. By layer: Domain 98.7%, Application 96.5%, API 92.9%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
+Measured on 2026-10-14: **141 tests pass; line coverage 94.0% (1493/1588), branch coverage 83.3% (354/425)**. By layer: Domain 98.7%, Application 96.5%, API 93.3%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
@@ -273,6 +289,7 @@ Coverage is evidence, not the goal. Every guard test was shown to fail by tempor
 - **Authentication** (`AuthTests`): every route has a policy; Reader is denied all six write routes with nothing written; a replayed cookie after logout is rejected; CSRF is required.
 - **Process logging** (`ProcessLoggingTests`): if the audit cannot be saved, the change rolls back; a logging outage never fails a request.
 - **`NameNormalizer`**, **`ApiExceptionHandler`**: matching correctness; no exception details leak to clients.
+- **UI hosting** (`SpaHostingTests`): deep links reach the app shell without a session, API paths keep their own 404s, and page loads are not logged.
 - **Layering** (`ArchitectureTests`) and **`SqliteWriteTransactions`** (`SqliteTransactionBehaviorTests`): the dependency rule holds; the write transaction the handlers rely on takes the database lock immediately.
 
 Test isolation:
@@ -302,7 +319,6 @@ The UI has 79 unit tests (`npm test`: stores, guards, date formatting, timeline,
 
 **Not built:**
 - Admin create, rename and add-duty forms in the UI (optional in the plan). Writes are done through the API: Swagger, `npm run demo:api` or curl.
-- Hosting the production UI build; the UI runs through the Angular dev server.
 - Dark mode.
 - Converting a populated database.
 - Integration with the external data source the assignment mentions (no interface for it was supplied).

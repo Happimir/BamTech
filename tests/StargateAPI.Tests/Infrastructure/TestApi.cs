@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
+using StargateAPI.Hosting;
 using StargateAPI.Infrastructure.Identity;
 using StargateAPI.Infrastructure.Persistence;
 using StargateAPI.Security;
@@ -74,7 +75,8 @@ public sealed class TestApi : IAsyncDisposable
     /// by that sign-in are cleared so each test sees only its own.
     /// </summary>
     public static async Task<TestApi> CreateAsync(
-        bool useFileDatabase = false, Action<IServiceCollection>? configureServices = null, TestUser user = TestUser.Admin)
+        bool useFileDatabase = false, Action<IServiceCollection>? configureServices = null, TestUser user = TestUser.Admin,
+        string spaRootPath = "")
     {
         SqliteConnection? keepAlive = null;
         string? databaseFile = null;
@@ -95,6 +97,8 @@ public sealed class TestApi : IAsyncDisposable
         {
             builder.UseEnvironment("Testing");
             builder.UseSetting("ConnectionStrings:StarbaseApiDatabase", connectionString);
+            // UI hosting is off unless a test opts in, so a local web/dist build changes nothing.
+            builder.UseSetting(SpaHosting.RootPathSetting, spaRootPath);
             builder.ConfigureTestServices(services =>
             {
                 // Tests only: far fewer PBKDF2 iterations keep sign-in fast. Production keeps the default.
