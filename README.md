@@ -3,8 +3,8 @@
 Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargate API, corrected and extended, plus an Angular UI.
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
-- **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 141 API tests at 94.0% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 22 browser tests against the real API.
+- **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Admin dialogs to add people, rename them and add duties, including retirement. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
+- **Evidence:** 141 API tests at 94.0% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -111,6 +111,13 @@ In the UI (`npm run seed:sample` first), open https://localhost:4200 (or https:/
 - open **Priya Raman** to see a person with no assignments;
 - search "Alex Morgan" to see two namesakes told apart by ID;
 - page through the directory, open a person, then use Back to people to return to the same page and search.
+
+As `admin` (a `reader` sees none of these controls):
+
+- **Add person** on the directory: a required display name and optional first, middle and last names. A name built from the parts is offered, never applied by itself. You land on the new record.
+- **Add duty** on a record: rank, title and start date. The dialog previews what the server derives: "Flight Director ends May 31, 2026", or for **Retire**, "Career ends …". Retire is offered only while a career is active. For a retired person, a new duty explains the reactivation. The latest allowed date is the server's business date (`GET /api/metadata`, UTC).
+- **Rename** on a record: the ID and history stay the same.
+- **Conflicts:** if the person changed after the dialog opened (try renaming them in a second tab), saving is refused with the draft kept. **Reload** shows the latest record, and you save again yourself; nothing is resent automatically. If a save's outcome is unknown (no response), the dialog reloads the record for review, and an unconfirmed create says "Creation may have succeeded" and links to a directory search before offering **Create anyway**.
 
 ## Project structure
 
@@ -298,7 +305,16 @@ Test isolation:
 - API tests run the real application against an isolated in-memory SQLite database per test. Concurrency tests use a temporary file database instead, because in-memory SQLite locks differently.
 - Temporary database files live under `%TEMP%/stargate-tests/<run>` and are deleted when the run ends. Folders left by interrupted runs are removed by the next run. Tests never touch `starbase.db`.
 
-The UI has 79 unit tests (`npm test`: stores, guards, date formatting, timeline, return-URL safety) and 22 browser tests (`npm run e2e`). The browser tests cover the introduction page, sign-in and session revocation, search and paging, person detail states, the Reader experience, accessibility and 200% zoom. See [Run the web UI](#run-the-web-ui).
+The UI has 116 unit tests (`npm test`: stores, guards, date formatting and serialization across time zones, timeline, return-URL safety, and the admin dialogs' validation, server-error handling, stale-version and unknown-outcome behaviour). It also has 25 browser tests (`npm run e2e`), covering:
+- the introduction page;
+- sign-in and session revocation;
+- search and paging;
+- person detail states;
+- admin create, duty, retirement and rename flows, and a stale-version conflict;
+- the Reader experience;
+- accessibility, including the dialogs, and 200% zoom.
+
+The browser tests create uniquely named people (`E2E Admin …`) on each run, as `npm run demo:api` does. See [Run the web UI](#run-the-web-ui).
 
 ## Limitations and deferred scope
 
@@ -318,7 +334,6 @@ The UI has 79 unit tests (`npm test`: stores, guards, date formatting, timeline,
 - A request body over 32 KiB gets 413 with the generic `bad_request` code.
 
 **Not built:**
-- Admin create, rename and add-duty forms in the UI (optional in the plan). Writes are done through the API: Swagger, `npm run demo:api` or curl.
 - Dark mode.
 - Converting a populated database.
 - Integration with the external data source the assignment mentions (no interface for it was supplied).
