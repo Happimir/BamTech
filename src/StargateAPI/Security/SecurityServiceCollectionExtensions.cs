@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using StargateAPI.Business.Data;
+using StargateAPI.Domain;
+using StargateAPI.Application.Logging;
+using StargateAPI.Infrastructure.Identity;
+using StargateAPI.Infrastructure.Persistence;
 
 namespace StargateAPI.Security
 {

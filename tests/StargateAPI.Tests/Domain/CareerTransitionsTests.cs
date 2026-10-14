@@ -1,6 +1,8 @@
-using StargateAPI.Business.Data;
-using StargateAPI.Business.Domain;
-using StargateAPI.Business.Results;
+using StargateAPI.Domain;
+using StargateAPI.Application.Logging;
+using StargateAPI.Infrastructure.Identity;
+using StargateAPI.Infrastructure.Persistence;
+using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Tests.Domain;
 

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using StargateAPI.Business.Logging;
-using StargateAPI.Business.Results;
+using StargateAPI.Application.Logging;
+using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Controllers
 {

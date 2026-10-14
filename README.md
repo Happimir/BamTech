@@ -2,9 +2,9 @@
 
 Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargate API, corrected and extended, plus an Angular UI.
 
-- **API** (`src/StargateAPI`, .NET 10, EF Core + SQLite). All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
+- **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A people directory with search and server paging; person detail with the current assignment and a newest-first duty timeline. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 128 API tests at 94.1% line coverage; 79 UI unit tests; 19 browser tests against the real API.
+- **Evidence:** 132 API tests at 93.9% line coverage, including architecture tests for the layer rules; 79 UI unit tests; 19 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -12,6 +12,7 @@ The supplied starter is committed unmodified (`46b669d`), and every later fix is
 
 - [Prerequisites](#prerequisites) · [Set up and run the API](#set-up-and-run-the-api) · [Run the web UI](#run-the-web-ui)
 - [Demonstration](#demonstration)
+- [Project structure](#project-structure)
 - [Design decisions](#design-decisions): identity and rule 1, the rules, policies, fixed defects
 - [API](#api) · [Sign-in and permissions](#sign-in-and-permissions) · [Process logs](#process-logs)
 - [Tests and coverage](#tests-and-coverage)
@@ -29,7 +30,7 @@ There is no database server to install: the API uses a local SQLite file.
 ```bash
 dotnet tool restore                               # installs the pinned dotnet-ef locally
 dotnet build                                      # restores packages; dotnet ef needs them
-dotnet ef database update --project src/StargateAPI
+dotnet ef database update --project src/StargateAPI.Infrastructure --startup-project src/StargateAPI
 dotnet run --project src/StargateAPI --launch-profile https -- seed-demo-users
 
 dotnet run --project src/StargateAPI --launch-profile https
@@ -44,11 +45,11 @@ In Development (the `https` launch profile), seeding creates fixed demo accounts
 
 These passwords are public and for local demos only. **They are never used outside Development:** any other environment must supply `DemoUsers:AdminPassword` and `DemoUsers:ReaderPassword` (user-secrets or the environment variables `DemoUsers__AdminPassword` / `DemoUsers__ReaderPassword`), or seeding refuses. Configured values also override the demo passwords in Development.
 
-Seeding is idempotent: re-running it adds missing roles or accounts and leaves existing passwords unchanged. To switch an existing database to different passwords, delete `starbase.db`, run `dotnet ef database update` and seed again.
+Seeding is idempotent: re-running it adds missing roles or accounts and leaves existing passwords unchanged. To switch an existing database to different passwords, delete `starbase.db`, run the `dotnet ef database update` command above and seed again.
 
 - The database file is `src/StargateAPI/starbase.db`. A relative `Data Source` in `ConnectionStrings:StarbaseApiDatabase` resolves against the API project folder, whichever folder you start it from.
 - Swagger UI is available in Development at `https://localhost:7204/swagger`.
-- **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run `dotnet ef database update` again.
+- **Fresh databases only.** The `ConvertToGuidIdentity` migration moves the starter's integer keys to UUIDv7 and refuses to run (making no changes) if the database already holds people or duties. Converting populated data is not implemented. Part of the migration (SQLite table rebuilds) runs outside a transaction; if it is interrupted, delete `starbase.db` and run the `dotnet ef database update` command above again.
 
 ## Run the web UI
 
@@ -95,6 +96,28 @@ In the UI (`npm run seed:sample` first), sign in as `admin` or `reader`. Then:
 - open **Priya Raman** to see a person with no assignments;
 - search "Alex Morgan" to see two namesakes told apart by ID;
 - page through the directory, open a person, then use Back to people to return to the same page and search.
+
+## Project structure
+
+The API is split into onion-architecture layers. Every reference points inward, so the career rules never depend on a framework or a database:
+
+```
+src/StargateAPI                 API host and composition root
+  │                             controllers, HTTP middleware, sign-in and security, Program.cs
+  ├──► StargateAPI.Application  use cases: MediatR commands and queries, DTOs, logging context,
+  │       │                     and the persistence abstractions they need (IStargateDbContext,
+  │       │                     IWriteTransactions, IPersistenceErrors, IRequestOutcomeLog)
+  │       └──► StargateAPI.Domain   entities and career rules (CareerTransitions, NameNormalizer,
+  │                                 Result/AppError); no package or project references
+  └──► StargateAPI.Infrastructure   EF Core + SQLite: StargateContext, entity configurations,
+          │                         migrations, SQLite transactions and error codes;
+          └──► Application, Domain  ASP.NET Core Identity accounts and sessions
+```
+
+- **Domain** has no dependencies at all.
+- **Application** may use EF Core's general API (sets, LINQ), but never SQLite. Two SQLite specifics sit behind interfaces implemented in Infrastructure: the write lock taken at the start of a transaction, and unique-violation and busy error codes. Changing the database provider would mean changing Infrastructure only.
+- **The API project** is the composition root. Business controllers only send MediatR requests. The sign-in controller and session validation use Identity from Infrastructure directly, because they are ASP.NET plumbing.
+- **The rule is enforced, not just intended:** `ArchitectureTests` checks the compiled assemblies. Domain references nothing; Application references only Domain and never SQLite; Infrastructure never references the API; business controllers never depend on an Infrastructure type. Each test was shown to fail when its rule was broken.
 
 ## Design decisions
 
@@ -240,7 +263,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-13: **128 tests pass; line coverage 94.1% (1411/1500), branch coverage 83.4% (331/397)**. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder at 61%: its command-line path is verified manually.
+Measured on 2026-10-13, after the layer split: **132 tests pass; line coverage 93.9% (1457/1552), branch coverage 82.7% (340/411)**. By layer: Domain 98.7%, Application 96.5%, API 92.9%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
@@ -250,6 +273,7 @@ Coverage is evidence, not the goal. Every guard test was shown to fail by tempor
 - **Authentication** (`AuthTests`): every route has a policy; Reader is denied all six write routes with nothing written; a replayed cookie after logout is rejected; CSRF is required.
 - **Process logging** (`ProcessLoggingTests`): if the audit cannot be saved, the change rolls back; a logging outage never fails a request.
 - **`NameNormalizer`**, **`ApiExceptionHandler`**: matching correctness; no exception details leak to clients.
+- **Layering** (`ArchitectureTests`) and **`SqliteWriteTransactions`** (`SqliteTransactionBehaviorTests`): the dependency rule holds; the write transaction the handlers rely on takes the database lock immediately.
 
 Test isolation:
 

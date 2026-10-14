@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using StargateAPI.Business.Logging;
+using StargateAPI.Application.Logging;
 
 namespace StargateAPI.Security
 {

@@ -2,12 +2,12 @@ using System.Security.Claims;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using StargateAPI.Business.Data;
-using StargateAPI.Business.Logging;
-using StargateAPI.Business.Results;
+using StargateAPI.Application;
+using StargateAPI.Application.Logging;
 using StargateAPI.Controllers;
+using StargateAPI.Domain.Results;
+using StargateAPI.Infrastructure;
+using StargateAPI.Infrastructure.Identity;
 using StargateAPI.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -42,21 +42,13 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddDbContext<StargateContext>(options =>
-    options.UseSqlite(ResolveSqliteConnectionString(
-        builder.Configuration.GetConnectionString("StarbaseApiDatabase"),
-        builder.Environment.ContentRootPath)));
 
-builder.Services.AddMediatR(cfg =>
-{
-    cfg.RegisterServicesFromAssemblies(typeof(Program).Assembly);
-});
+// Layers: use cases (Application) and their persistence implementation (Infrastructure).
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 
 // Business "today" (UTC) for date rules; replaceable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
-
-// Per-request logging facts shared by the HTTP boundary, handlers and exception handling.
-builder.Services.AddScoped<OperationContext>();
 
 // Identity, revocable cookie sessions, role policies (authentication required by default), antiforgery.
 builder.Services.AddActsSecurity(builder.Configuration);
@@ -104,35 +96,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
-// A relative SQLite path would resolve against the process working directory, so starting
-// the API from another folder would silently create a second, empty database. Anchor it to
-// the content root instead; absolute paths and in-memory databases are left unchanged.
-static string ResolveSqliteConnectionString(string? connectionString, string contentRootPath)
-{
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        throw new InvalidOperationException("Connection string 'StarbaseApiDatabase' is not configured.");
-    }
-
-    var csb = new SqliteConnectionStringBuilder(connectionString);
-    if (csb.Mode != SqliteOpenMode.Memory
-        && !string.IsNullOrEmpty(csb.DataSource)
-        && csb.DataSource != ":memory:"
-        && !Path.IsPathRooted(csb.DataSource))
-    {
-        csb.DataSource = Path.GetFullPath(Path.Combine(contentRootPath, csb.DataSource));
-    }
-
-    // Bound how long a command waits on another writer's lock (SQLITE_BUSY becomes a 503)
-    // unless the connection string sets its own value; the provider default is 30 seconds.
-    if (csb.DefaultTimeout == 30)
-    {
-        csb.DefaultTimeout = 5;
-    }
-
-    return csb.ToString();
-}
 
 // Exposes the implicit Program class to WebApplicationFactory in the test project.
 public partial class Program { }

@@ -1,8 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc.Controllers;
-using Microsoft.EntityFrameworkCore;
-using StargateAPI.Business.Data;
-using StargateAPI.Business.Logging;
+using StargateAPI.Application.Abstractions;
+using StargateAPI.Application.Logging;
 
 namespace StargateAPI.Controllers
 {
@@ -19,16 +18,16 @@ namespace StargateAPI.Controllers
         private static readonly TimeSpan LogWriteTimeout = TimeSpan.FromSeconds(2);
 
         private readonly RequestDelegate _next;
-        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IRequestOutcomeLog _outcomeLog;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<RequestOutcomeLoggingMiddleware> _logger;
 
         public RequestOutcomeLoggingMiddleware(
-            RequestDelegate next, IServiceScopeFactory scopeFactory, TimeProvider timeProvider,
+            RequestDelegate next, IRequestOutcomeLog outcomeLog, TimeProvider timeProvider,
             ILogger<RequestOutcomeLoggingMiddleware> logger)
         {
             _next = next;
-            _scopeFactory = scopeFactory;
+            _outcomeLog = outcomeLog;
             _timeProvider = timeProvider;
             _logger = logger;
         }
@@ -106,14 +105,10 @@ namespace StargateAPI.Controllers
                     (long)elapsed.TotalMilliseconds, message,
                     operation.Exception is { } exception ? LogContent.ExceptionDiagnostics(exception) : null);
 
-                // A fresh scope and context: no pending business changes can leak into this save,
-                // and the request's cancellation token is deliberately not used.
-                using var timeout = new CancellationTokenSource(LogWriteTimeout);
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                var context = scope.ServiceProvider.GetRequiredService<StargateContext>();
-                context.Database.SetCommandTimeout(LogWriteTimeout);
-                context.ProcessLogs.Add(log);
-                await context.SaveChangesAsync(timeout.Token);
+                // Saved in its own unit of work, so no pending business changes can leak into it.
+                // The request's cancellation token is deliberately not used: an aborted request
+                // still gets its outcome recorded.
+                await _outcomeLog.WriteAsync(log, LogWriteTimeout, CancellationToken.None);
             }
             catch (Exception ex)
             {

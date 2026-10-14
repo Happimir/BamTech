@@ -1,4 +1,4 @@
-using StargateAPI.Business.Domain;
+using StargateAPI.Domain;
 
 namespace StargateAPI.Tests;
 

@@ -1,9 +1,9 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using StargateAPI.Business.Commands;
-using StargateAPI.Business.Dtos;
-using StargateAPI.Business.Queries;
+using StargateAPI.Application.Commands;
+using StargateAPI.Application.Dtos;
+using StargateAPI.Application.Queries;
 using StargateAPI.Security;
 
 namespace StargateAPI.Controllers

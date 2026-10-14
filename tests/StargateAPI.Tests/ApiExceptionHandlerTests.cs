@@ -5,12 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using StargateAPI.Controllers;
+using StargateAPI.Infrastructure.Persistence;
 
 namespace StargateAPI.Tests;
 
 /// <summary>
 /// The last line of defence for unexpected failures: correct status and stable code, and no
-/// exception text, SQL or stack trace in the response body.
+/// exception text, SQL or stack trace in the response body. Uses the real SQLite error
+/// classification, so the provider's codes are covered end to end.
 /// </summary>
 public class ApiExceptionHandlerTests
 {
@@ -22,7 +24,9 @@ public class ApiExceptionHandlerTests
         var context = new DefaultHttpContext { RequestServices = services };
         context.Response.Body = new MemoryStream();
         var handler = new ApiExceptionHandler(
-            services.GetRequiredService<IProblemDetailsService>(), NullLogger<ApiExceptionHandler>.Instance);
+            services.GetRequiredService<IProblemDetailsService>(),
+            new SqlitePersistenceErrors(),
+            NullLogger<ApiExceptionHandler>.Instance);
 
         var handled = await handler.TryHandleAsync(context, exception, TestContext.Current.CancellationToken);
 

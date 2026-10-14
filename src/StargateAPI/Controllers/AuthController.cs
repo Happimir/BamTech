@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using StargateAPI.Business.Data;
-using StargateAPI.Business.Logging;
-using StargateAPI.Business.Results;
+using StargateAPI.Domain;
+using StargateAPI.Application.Logging;
+using StargateAPI.Infrastructure.Identity;
+using StargateAPI.Infrastructure.Persistence;
+using StargateAPI.Domain.Results;
 using StargateAPI.Security;
 
 namespace StargateAPI.Controllers

@@ -1,15 +1,8 @@
 namespace StargateAPI.Security
 {
-    /// <summary>Roles granted to accounts. Permissions are application-wide, not per Person.</summary>
-    public static class Roles
-    {
-        public const string Admin = "Admin";
-        public const string Reader = "Reader";
-    }
-
     /// <summary>
     /// Authorization policies applied to every route, legacy and ID-based alike. Admin holds all
-    /// three; Reader holds People.Read only.
+    /// three; Reader holds People.Read only (roles are defined with the accounts, in Infrastructure).
     /// </summary>
     public static class Policies
     {
