@@ -52,3 +52,34 @@ export interface PersonDuties {
   person: PersonDetail;
   duties: Duty[];
 }
+
+/** Server "today" for date rules, and its zone (UTC in the demo). */
+export interface BusinessMetadata {
+  businessDate: string;
+  businessTimeZone: string;
+}
+
+// Request bodies. Name parts are sent as entered, or null; the server never splits names.
+
+export interface PersonNameFields {
+  name: string;
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+}
+
+export interface AssignDutyRequest {
+  rank: string;
+  dutyTitle: string;
+  dutyStartDate: string;
+  expectedVersion: string;
+}
+
+export interface AssignDutyResult {
+  id: string;
+  personId: string;
+  version: string;
+}
+
+/** API input limits, kept in step with the server's validation. */
+export const LIMITS = { name: 300, namePart: 100, rank: 100, dutyTitle: 200 } as const;
