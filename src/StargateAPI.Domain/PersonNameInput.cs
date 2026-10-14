@@ -5,6 +5,7 @@ namespace StargateAPI.Domain
     /// <summary>
     /// Validated person name fields. Name is the required display name; the optional parts are
     /// explicitly supplied metadata, never derived by splitting Name. Whitespace-only parts become null.
+    /// Values are canonical (trimmed, NFC; see <see cref="NameNormalizer.Canonical"/>).
     /// </summary>
     public sealed record PersonNameInput(string Name, string? FirstName, string? MiddleName, string? LastName)
     {
@@ -25,7 +26,7 @@ namespace StargateAPI.Domain
                 return AppError.Validation(errors);
             }
 
-            return new PersonNameInput(name!.Trim(), first, middle, last);
+            return new PersonNameInput(NameNormalizer.Canonical(name!), first, middle, last);
         }
 
         private static string? Part(Dictionary<string, string[]> errors, string field, string? value)
@@ -35,12 +36,23 @@ namespace StargateAPI.Domain
                 return null;
             }
 
-            var trimmed = value.Trim();
-            if (trimmed.Length > Person.MaxNamePartLength)
+            string canonical;
+            try
+            {
+                canonical = NameNormalizer.Canonical(value);
+            }
+            catch (ArgumentException)
+            {
+                // Invalid UTF-16 (e.g. a lone surrogate) cannot be stored as a canonical name.
+                errors[field] = ["Contains invalid characters."];
+                return null;
+            }
+
+            if (canonical.Length > Person.MaxNamePartLength)
             {
                 errors[field] = [$"Must be at most {Person.MaxNamePartLength} characters."];
             }
-            return trimmed;
+            return canonical;
         }
     }
 }

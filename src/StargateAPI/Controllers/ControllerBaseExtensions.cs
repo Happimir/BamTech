@@ -20,6 +20,7 @@ namespace StargateAPI.Controllers
                 ErrorKind.Validation => StatusCodes.Status400BadRequest,
                 ErrorKind.NotFound => StatusCodes.Status404NotFound,
                 ErrorKind.Conflict => StatusCodes.Status409Conflict,
+                ErrorKind.PreconditionRequired => StatusCodes.Status428PreconditionRequired,
                 ErrorKind.Unavailable => StatusCodes.Status503ServiceUnavailable,
                 _ => StatusCodes.Status500InternalServerError
             };

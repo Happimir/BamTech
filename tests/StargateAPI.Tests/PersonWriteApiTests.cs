@@ -70,8 +70,11 @@ public class PersonWriteApiTests
             new { name = "Grace B. Hopper", firstName = "Grace", lastName = "Hopper", version }, Ct);
         var stale = await api.Client.PutAsJsonAsync($"/api/people/{id}", new { name = "Someone Else", version }, Ct);
 
-        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
-        Assert.True((await Json.ReadAsync(missing)).GetProperty("errors").TryGetProperty("version", out _));
+        // A missing precondition is 428 on every route; the rename below still uses the original version.
+        Assert.Equal(HttpStatusCode.PreconditionRequired, missing.StatusCode);
+        var missingBody = await Json.ReadAsync(missing);
+        Assert.Equal("version_required", missingBody.GetProperty("code").GetString());
+        Assert.Equal("Precondition Required", missingBody.GetProperty("title").GetString());
         Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
         var body = await Json.ReadAsync(renamed);
         Assert.Equal("Grace B. Hopper", body.GetProperty("name").GetString());
@@ -158,9 +161,37 @@ public class PersonWriteApiTests
         var withoutVersion = await UpsertAsync(api, "Alice", "Alicia");
         var stale = await UpsertAsync(api, "Alice", "Alicia", Guid.NewGuid());
 
+        Assert.Equal(HttpStatusCode.PreconditionRequired, withoutVersion.StatusCode);
         Assert.Equal("version_required", await CodeAsync(withoutVersion));
         Assert.Equal("concurrency_conflict", await CodeAsync(stale));
         Assert.Equal(1, await CountAsync(api, "Alice"));
+    }
+
+    [Fact]
+    public async Task Resending_a_name_in_another_unicode_form_is_not_a_rename()
+    {
+        // "é" precomposed, or "e" plus a combining accent: the same name to every reader.
+        const string composed = "José Ortega";
+        const string decomposed = "José Ortega";
+        await using var api = await TestApi.CreateAsync();
+        var created = await Json.ReadAsync(await api.Client.PostAsJsonAsync("/api/people",
+            new { name = decomposed, firstName = "José" }, Ct));
+        var id = created.GetProperty("id").GetGuid();
+        var version = created.GetProperty("version").GetGuid();
+
+        // Re-sent exactly as first sent (decomposed), which now differs from the stored spelling.
+        var byName = await UpsertAsync(api, decomposed, decomposed);
+        var byId = await api.Client.PutAsJsonAsync($"/api/people/{id}",
+            new { name = decomposed, firstName = "José", version }, Ct);
+
+        // Stored in the canonical (NFC) form.
+        Assert.Equal(composed, created.GetProperty("name").GetString());
+        // Neither route treats it as a change: no version needed, none consumed, parts kept.
+        Assert.Equal(HttpStatusCode.OK, byName.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, byId.StatusCode);
+        var after = await GetPersonAsync(api, id);
+        Assert.Equal(version, after.GetProperty("version").GetGuid());
+        Assert.Equal("José", after.GetProperty("firstName").GetString());
     }
 
     [Fact]

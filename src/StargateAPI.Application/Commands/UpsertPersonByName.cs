@@ -18,7 +18,8 @@ namespace StargateAPI.Application.Commands
     /// ExpectedVersion is sent; otherwise 404. So retrying "Alice" to "Alicia" after it succeeded
     /// can never create a second Alicia.</item>
     /// <item>One match, same display name: a no-op (a supplied ExpectedVersion is still checked).</item>
-    /// <item>One match, new display name: ExpectedVersion is required and must be current.</item>
+    /// <item>One match, new display name: ExpectedVersion is required (428 version_required when
+    /// missing) and must be current.</item>
     /// </list>
     /// </summary>
     public sealed record UpsertPersonByName(string? LookupName, string? Name, Guid? ExpectedVersion)
@@ -56,7 +57,8 @@ namespace StargateAPI.Application.Commands
             {
                 return AppError.Validation(errors);
             }
-            var requestedName = request.Name!.Trim();
+            // Canonical (NFC) like the stored name, so re-sending the same name is not a rename.
+            var requestedName = NameNormalizer.Canonical(request.Name!);
 
             // Write-locked transaction before resolving: two concurrent upserts of a missing name
             // serialize here, so the second sees the first's insert instead of creating a duplicate.
@@ -100,8 +102,7 @@ namespace StargateAPI.Application.Commands
             }
             if (nameChanges && request.ExpectedVersion is null)
             {
-                return AppError.Conflict(ErrorCodes.VersionRequired,
-                    "Changing a name requires expectedVersion. Read the person first and send its version.");
+                return AppError.VersionRequired();
             }
 
             var renamed = person.ChangeDisplayName(requestedName);

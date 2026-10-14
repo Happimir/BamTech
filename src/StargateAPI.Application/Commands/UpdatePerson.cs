@@ -11,7 +11,7 @@ namespace StargateAPI.Application.Commands
 {
     /// <summary>
     /// Replaces a person's name fields by stable ID. Version is required: a missing version is a
-    /// 400 and a stale one is a 409. Identity and duty history are unaffected by a rename.
+    /// 428 and a stale one is a 409. Identity and duty history are unaffected by a rename.
     /// </summary>
     public sealed record UpdatePerson(
         Guid Id,
@@ -45,7 +45,7 @@ namespace StargateAPI.Application.Commands
             }
             if (request.Version is not { } version)
             {
-                return AppError.Validation("version", "Version is required. Read the person first and send its version.");
+                return AppError.VersionRequired();
             }
 
             // Write-locked transaction: the version check and the write cannot interleave with another writer.

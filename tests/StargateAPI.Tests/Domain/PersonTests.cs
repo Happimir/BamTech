@@ -1,4 +1,5 @@
 using StargateAPI.Domain;
+using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Tests.Domain;
 
@@ -43,5 +44,34 @@ public class PersonTests
 
         Assert.Empty(changed);
         Assert.Equal(before, person.Version);
+    }
+
+    [Fact]
+    public void Names_are_stored_canonically_so_another_unicode_form_of_the_same_name_is_no_change()
+    {
+        // Callers outside the API's input validation get the same guarantee from the entity itself.
+        const string composed = "José Ortega";
+        const string decomposed = "José Ortega";
+        var person = Person.Create(decomposed, "José");
+        var before = person.Version;
+
+        var replaced = person.ReplaceNames(decomposed, "José", null, null);
+        var renamed = person.ChangeDisplayName(decomposed);
+
+        Assert.Equal((composed, "José"), (person.Name, person.FirstName));
+        Assert.Empty(replaced);
+        Assert.False(renamed);
+        Assert.Equal(before, person.Version);
+    }
+
+    [Fact]
+    public void A_name_part_that_cannot_be_normalized_is_a_validation_error_not_an_exception()
+    {
+        // A lone surrogate is invalid UTF-16; storing it canonically would throw.
+        var result = PersonNameInput.Create("Grace Hopper", "Gr\uD800ce", null, null);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.Validation, result.Error.Code);
+        Assert.True(result.Error.FieldErrors!.ContainsKey("firstName"));
     }
 }
