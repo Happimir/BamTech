@@ -14,6 +14,8 @@ test('a Reader gets the complete read experience with no write controls', async 
   await signInAsReader(page);
   await expect(page.locator('.shell-bar')).toContainText('reader');
   await expect(page.locator('.shell-bar')).toContainText('Reader');
+  await expect(page.locator('.results:not(.stale)')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add person' })).toHaveCount(0);
 
   await page.getByLabel('Name').fill('Grace');
   await page.getByLabel('Name').press('Enter');
