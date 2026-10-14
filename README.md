@@ -8,12 +8,24 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
+## Where each task is
+
+| Assignment task | Where | Proven by |
+| --- | --- | --- |
+| Generate the database | `dotnet ef database update` ([set-up](#set-up-and-run-the-api)); migrations in `src/StargateAPI.Infrastructure/Persistence/Migrations` | `MigrationTests`, `StarterBaselineTests` |
+| The five API operations | `PersonController`, `AstronautDutyController` (by name); `PeopleController` (by ID) | `PersonReadTests`, `PersonWriteApiTests`, `PeopleListApiTests`, `DutyAssignmentApiTests` |
+| Enforce the rules | `CareerTransitions.AssignDuty` (Domain), backed by database constraints; rule 1 is [a deliberate exception](#identity-stable-ids-instead-of-unique-names-rule-1) | `CareerTransitionsTests`, `DutyAssignmentApiTests` |
+| Defensive coding | Validated inputs (`DutyAssignmentInput`, `PersonNameInput`), write-locked transactions, `ApiExceptionHandler` | `ApiExceptionHandlerTests`, the concurrency tests, `AuthTests` |
+| Unit tests, >50% coverage | `tests/StargateAPI.Tests` | 157 tests, 94.2% of lines; the coverage run fails below 50% |
+| Process logging in the database | `ProcessLog`, `AuditTrail`, `RequestOutcomeLoggingMiddleware` | `ProcessLoggingTests` |
+| UI (encouraged) | `web/` | 117 unit tests, 25 browser tests |
+
 ## Contents
 
 - [Prerequisites](#prerequisites) · [Set up and run the API](#set-up-and-run-the-api) · [Run the web UI](#run-the-web-ui)
 - [Demonstration](#demonstration)
 - [Project structure](#project-structure)
-- [Design decisions](#design-decisions): identity and rule 1, the rules, policies, fixed defects
+- [Design decisions](#design-decisions): identity and rule 1, the rules, policies, the external feed, fixed defects
 - [API](#api) · [Sign-in and permissions](#sign-in-and-permissions) · [Process logs](#process-logs)
 - [Tests and coverage](#tests-and-coverage)
 - [Limitations and deferred scope](#limitations-and-deferred-scope)
@@ -155,9 +167,16 @@ src/StargateAPI                 API host and composition root
 
 The assignment leaves several points open or in tension with each other, and some ambiguity is part of the exercise. Where it is silent or a literal reading would weaken the system, I followed established practice for this kind of record-keeping system. Each such choice is documented below with its reasoning, and enforced by tests.
 
-### Identity: stable IDs instead of names (rule 1)
+### Identity: stable IDs instead of unique names (rule 1)
 
-Rule 1 ("a person is uniquely identified by their name") is deliberately replaced by stable identifiers, as is standard for records about people. Names change and can be shared, but a career history must stay attached to the same person. Treating a name as the key would merge namesakes and break history on a rename. Name-based routes are kept for compatibility, with ambiguous names refused rather than guessed.
+Rule 1 ("a person is uniquely identified by their name") is deliberately not enforced. Two separate questions sit behind it:
+
+- **How records are keyed.** Every person has a stable UUIDv7 key, which their duties reference. That alone keeps a history attached through a rename, and it would hold even if names were unique.
+- **Whether two people may share a name.** This is the actual departure from rule 1. People do share names. A system of record that refuses the second John Smith either loses that person or forces a misspelling, so namesakes are allowed, each with their own ID and history.
+
+The cost is that a name no longer always identifies one person. The assignment's operations all work by name, so each one refuses an ambiguous name (409 `ambiguous_name`, nothing written) instead of guessing, and the ID routes settle it. If the business confirms rule 1 literally, enforcing it is a small change: a unique index on the normalized name, and a 409 when a create would duplicate one.
+
+Neither choice solves the external feed: a source that identifies people only by name cannot tell namesakes apart either way. The real fix is a stable person ID from the source system, which the assignment does not supply (see [Ingesting the external feed](#ingesting-the-external-feed)).
 
 | | Starter | Now |
 | --- | --- | --- |
@@ -190,6 +209,31 @@ All of these live in one pure domain operation (`CareerTransitions.AssignDuty`),
 - **Dates are calendar dates** (`YYYY-MM-DD`), never time-zone converted; operation timestamps are UTC.
 - **History is append-only.** The only change to an existing duty is closing its end date. Corrections or backfills would need a separate operation.
 - **Invalid input is 400; a valid request that conflicts with the current state is 409.** Rejections never partially change data.
+
+### Ingesting the external feed
+
+The assignment says people and duties are updated by an external service that ACTS does not control. No interface or payload for it was supplied, so the API is the ingestion boundary, and the policies above apply to the feed exactly as they apply to the UI. Some of them refuse data that a source system could legitimately send:
+
+| The source sends | ACTS answers | Why |
+| --- | --- | --- |
+| A duty starting on or before the current one (late or out-of-order delivery, a backfill) | 409 `chronology_conflict` | History is appended in order; inserting earlier would rewrite closed duties and career dates |
+| RETIRED as a person's first duty (already retired when ACTS first hears of them) | 409 `first_duty_retirement` | There is no active career for rule 7 to end |
+| A duty that starts in the future (scheduled ahead) | 400 `validation` | "Current" means effective now |
+| The same duty again (a retry) | 409 `chronology_conflict`, nothing written | Makes a retry safe |
+| A name two people share | 409 `ambiguous_name` | See rule 1 |
+
+Nothing is refused silently. The sender gets the stable `code` and a `traceId`, and every refusal is stored as a `Rejected` row in `ProcessLog` with the same code and trace ID (request bodies are never stored), so both sides can match it up:
+
+```sql
+-- Refused requests, newest first
+SELECT datetime(OccurredAtUtc / 1000, 'unixepoch') AS At, Operation, HttpStatusCode, ErrorCode, TraceId
+FROM ProcessLog WHERE Outcome = 'Rejected' ORDER BY OccurredAtUtc DESC LIMIT 50;
+```
+
+A production feed would need three things the assignment leaves open. They are product decisions for the feed's owners, so they are listed rather than guessed:
+- a stable person ID from the source (and an event ID, so retries are recognized rather than refused);
+- a correction operation that rebuilds a person's intervals when earlier or corrected duties arrive;
+- a policy for scheduled assignments, for example holding them as pending until their start date.
 
 ### Starter defects fixed
 
@@ -347,7 +391,7 @@ The browser tests create uniquely named people (`E2E Admin …`) on each run, as
 **Not built:**
 - Dark mode.
 - Converting a populated database.
-- Integration with the external data source the assignment mentions (no interface for it was supplied).
+- Integration with the external data source the assignment mentions (no interface for it was supplied; see [Ingesting the external feed](#ingesting-the-external-feed)).
 
 **Known untested paths:**
 - The Cancelled and escaped-exception branches of request-outcome logging.
