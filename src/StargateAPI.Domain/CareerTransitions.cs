@@ -39,7 +39,7 @@ namespace StargateAPI.Domain
             }
 
             // A second retirement would move the career end through a period with no active service.
-            if (input.IsRetirement && detail.CurrentDutyTitle == DutyAssignmentInput.RetiredTitle)
+            if (input.IsRetirement && Retirement.StatusOf(detail.CurrentDutyTitle) == CareerStatus.Retired)
             {
                 return AppError.Conflict(ErrorCodes.AlreadyRetired,
                     "This person is already retired. Assign an active duty before retiring again.");

@@ -6,6 +6,8 @@ namespace StargateAPI.Domain.Results
         Validation,
         NotFound,
         Conflict,
+        /// <summary>A required precondition (the person's version) was not sent.</summary>
+        PreconditionRequired,
         Unavailable
     }
 
@@ -43,6 +45,11 @@ namespace StargateAPI.Domain.Results
         public static AppError StaleVersion() =>
             new(ErrorKind.Conflict, ErrorCodes.ConcurrencyConflict,
                 "This person was changed by another request. Reload and review before trying again.");
+
+        /// <summary>A change that needs the person's version was sent without one (HTTP 428 on every route).</summary>
+        public static AppError VersionRequired() =>
+            new(ErrorKind.PreconditionRequired, ErrorCodes.VersionRequired,
+                "This change requires the person's current version. Read the person first and send its version.");
 
         public static AppError Validation(string field, string message) =>
             new(ErrorKind.Validation, ErrorCodes.Validation, "One or more fields are invalid.",

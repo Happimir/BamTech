@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
-import { AuthMe, Capability } from '../api/api.models';
+import { AuthMe, Capability } from '../data-access/api.models';
 import { isUnavailable, problemCode } from '../http/http-errors';
-import { AuthApi, Credentials } from './auth-api';
+import { AuthApi, Credentials } from '../data-access/auth-api';
 
 /**
  * `unavailable` means the session could not be established because the service failed;

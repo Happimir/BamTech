@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthStore, LoginOutcome } from '../../core/auth/auth.store';
-import { safeReturnUrl } from '../../core/navigation/return-url';
+import { safeReturnUrl } from '../../core/utils/return-url';
 
 const FAILURE_MESSAGES: Record<Exclude<LoginOutcome, 'signed-in'>, string> = {
   'invalid-credentials': 'Incorrect username or password.',

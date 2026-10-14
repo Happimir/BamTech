@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, provideRouter, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
-import { AuthMe, Capability } from '../api/api.models';
+import { AuthMe, Capability } from '../data-access/api.models';
 import { authenticatedGuard, capabilityGuard } from './auth.guards';
 import { AuthStore } from './auth.store';
 

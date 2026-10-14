@@ -7,7 +7,7 @@ namespace StargateAPI.Domain
     {
         public const string RetiredTitle = "RETIRED";
 
-        public bool IsRetirement => DutyTitle == RetiredTitle;
+        public bool IsRetirement => Retirement.IsRetirementTitle(DutyTitle);
 
         /// <summary>
         /// Shape validation: trimmed nonblank bounded rank/title, a required start date that is not

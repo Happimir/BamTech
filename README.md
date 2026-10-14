@@ -4,16 +4,28 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Admin dialogs to add people, rename them and add duties, including retirement. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 145 API tests at 94.1% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
+- **Evidence:** 157 API tests at 94.2% line coverage, including architecture tests for the layer rules; 117 UI unit tests; 25 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
+
+## Where each task is
+
+| Assignment task | Where | Proven by |
+| --- | --- | --- |
+| Generate the database | `dotnet ef database update` ([set-up](#set-up-and-run-the-api)); migrations in `src/StargateAPI.Infrastructure/Persistence/Migrations` | `MigrationTests`, `StarterBaselineTests` |
+| The five API operations | `PersonController`, `AstronautDutyController` (by name); `PeopleController` (by ID) | `PersonReadTests`, `PersonWriteApiTests`, `PeopleListApiTests`, `DutyAssignmentApiTests` |
+| Enforce the rules | `CareerTransitions.AssignDuty` (Domain), backed by database constraints; rule 1 is [a deliberate exception](#identity-stable-ids-instead-of-unique-names-rule-1) | `CareerTransitionsTests`, `DutyAssignmentApiTests` |
+| Defensive coding | Validated inputs (`DutyAssignmentInput`, `PersonNameInput`), write-locked transactions, `ApiExceptionHandler` | `ApiExceptionHandlerTests`, the concurrency tests, `AuthTests` |
+| Unit tests, >50% coverage | `tests/StargateAPI.Tests` | 157 tests, 94.2% of lines; the coverage run fails below 50% |
+| Process logging in the database | `ProcessLog`, `AuditTrail`, `RequestOutcomeLoggingMiddleware` | `ProcessLoggingTests` |
+| UI (encouraged) | `web/` | 117 unit tests, 25 browser tests |
 
 ## Contents
 
 - [Prerequisites](#prerequisites) · [Set up and run the API](#set-up-and-run-the-api) · [Run the web UI](#run-the-web-ui)
 - [Demonstration](#demonstration)
 - [Project structure](#project-structure)
-- [Design decisions](#design-decisions): identity and rule 1, the rules, policies, fixed defects
+- [Design decisions](#design-decisions): identity and rule 1, the rules, policies, the external feed, fixed defects
 - [API](#api) · [Sign-in and permissions](#sign-in-and-permissions) · [Process logs](#process-logs)
 - [Tests and coverage](#tests-and-coverage)
 - [Limitations and deferred scope](#limitations-and-deferred-scope)
@@ -151,13 +163,48 @@ src/StargateAPI                 API host and composition root
 - **The API project** is the composition root. Business controllers only send MediatR requests. The sign-in controller and session validation use Identity from Infrastructure directly, because they are ASP.NET plumbing.
 - **The rule is enforced, not just intended:** `ArchitectureTests` checks the compiled assemblies. Domain references nothing; Application references only Domain and never SQLite; Infrastructure never references the API; business controllers never depend on an Infrastructure type. Each test was shown to fail when its rule was broken.
 
+The Angular app (`web/src/app`) is grouped by feature, and within a feature by role. Each spec sits beside the file it tests:
+
+```
+app.ts, app.config.ts, app.routes.ts   shell, providers, lazy-loaded routes
+core/                                  app-wide, used by every feature
+  data-access/                         API models and transport (PeopleApi, AuthApi)
+  auth/                                AuthStore and route guards
+  http/                                error classification, session-expiry interceptor
+  utils/                               calendar dates, safe return URLs
+shared/                                used by more than one feature
+  ui/status-badge/                     the Active / Retired / Not assigned badge
+  utils/                               personStatus
+features/
+  people/                              the directory
+    people-page/                       the page component
+    data-access/                       PeopleStore (URL-driven paging and search)
+    utils/                             query parsing, table rows
+  person-detail/                       one person's record
+    person-detail-page/                the page component
+    data-access/                       PersonDetailStore (one /duties snapshot)
+    utils/                             timeline, return to the directory
+  admin/                               write dialogs (Admin only)
+    person-dialog/, duty-dialog/       one folder per dialog
+    shared/                            write-failure handling and dialog styles
+  status-pages/                        forbidden, not found, unavailable
+  landing/, login/                     single-component pages
+```
+
 ## Design decisions
 
 The assignment leaves several points open or in tension with each other, and some ambiguity is part of the exercise. Where it is silent or a literal reading would weaken the system, I followed established practice for this kind of record-keeping system. Each such choice is documented below with its reasoning, and enforced by tests.
 
-### Identity: stable IDs instead of names (rule 1)
+### Identity: stable IDs instead of unique names (rule 1)
 
-Rule 1 ("a person is uniquely identified by their name") is deliberately replaced by stable identifiers, as is standard for records about people. Names change and can be shared, but a career history must stay attached to the same person. Treating a name as the key would merge namesakes and break history on a rename. Name-based routes are kept for compatibility, with ambiguous names refused rather than guessed.
+Rule 1 ("a person is uniquely identified by their name") is deliberately not enforced. Two separate questions sit behind it:
+
+- **How records are keyed.** Every person has a stable UUIDv7 key, which their duties reference. That alone keeps a history attached through a rename, and it would hold even if names were unique.
+- **Whether two people may share a name.** This is the actual departure from rule 1. People do share names. A system of record that refuses the second John Smith either loses that person or forces a misspelling, so namesakes are allowed, each with their own ID and history.
+
+The cost is that a name no longer always identifies one person. The assignment's operations all work by name, so each one refuses an ambiguous name (409 `ambiguous_name`, nothing written) instead of guessing, and the ID routes settle it. If the business confirms rule 1 literally, enforcing it is a small change: a unique index on the normalized name, and a 409 when a create would duplicate one.
+
+Neither choice solves the external feed: a source that identifies people only by name cannot tell namesakes apart either way. The real fix is a stable person ID from the source system, which the assignment does not supply (see [Ingesting the external feed](#ingesting-the-external-feed)).
 
 | | Starter | Now |
 | --- | --- | --- |
@@ -167,7 +214,7 @@ Rule 1 ("a person is uniquely identified by their name") is deliberately replace
 | Selecting a person | By name | By ID (`/api/people/{id}`); search returns every match with its ID |
 | Matching | Exact SQL text | Trimmed, Unicode-normalized, case-insensitive; accents and inner spaces are kept |
 
-A version token (`version` / `expectedVersion`) protects updates against stale writes. Renaming by name never creates a person: a retried rename of a name that no longer exists gets 404.
+A version token (`version` / `expectedVersion`) protects updates against stale writes. Renaming by name never creates a person: a retried rename of a name that no longer exists gets 404. Names are stored in Unicode NFC form, so re-sending the same name with its accents encoded differently is not a change.
 
 ### The rules
 
@@ -177,7 +224,7 @@ A version token (`version` / `expectedVersion`) protects updates against stale w
 | 3: one current rank/title/start | One summary row per person, updated in the same transaction as each new duty |
 | 4: the current duty has no end date | At most one open duty per person, also enforced by a unique partial index |
 | 5: the previous duty ends the day before the next starts | Start dates must strictly increase per person; the previous duty is closed in the same transaction |
-| 6: RETIRED means retired | The title is canonicalized (`retired` → `RETIRED`); status is derived from the current title |
+| 6: RETIRED means retired | The title is canonicalized (`retired` → `RETIRED`). The API decides status in one place and reports it: `astronaut.status` (`active` / `retired`) and each duty's `isRetirement`. Clients never parse titles |
 | 7: career ends the day before retirement | While retired, career end = retirement start − 1 day; it clears on reactivation |
 
 All of these live in one pure domain operation (`CareerTransitions.AssignDuty`), which validates before changing anything. The handler runs it inside an immediate SQLite write transaction, so concurrent appends cannot interleave.
@@ -190,6 +237,31 @@ All of these live in one pure domain operation (`CareerTransitions.AssignDuty`),
 - **Dates are calendar dates** (`YYYY-MM-DD`), never time-zone converted; operation timestamps are UTC.
 - **History is append-only.** The only change to an existing duty is closing its end date. Corrections or backfills would need a separate operation.
 - **Invalid input is 400; a valid request that conflicts with the current state is 409.** Rejections never partially change data.
+
+### Ingesting the external feed
+
+The assignment says people and duties are updated by an external service that ACTS does not control. No interface or payload for it was supplied, so the API is the ingestion boundary, and the policies above apply to the feed exactly as they apply to the UI. Some of them refuse data that a source system could legitimately send:
+
+| The source sends | ACTS answers | Why |
+| --- | --- | --- |
+| A duty starting on or before the current one (late or out-of-order delivery, a backfill) | 409 `chronology_conflict` | History is appended in order; inserting earlier would rewrite closed duties and career dates |
+| RETIRED as a person's first duty (already retired when ACTS first hears of them) | 409 `first_duty_retirement` | There is no active career for rule 7 to end |
+| A duty that starts in the future (scheduled ahead) | 400 `validation` | "Current" means effective now |
+| The same duty again (a retry) | 409 `chronology_conflict`, nothing written | Makes a retry safe |
+| A name two people share | 409 `ambiguous_name` | See rule 1 |
+
+Nothing is refused silently. The sender gets the stable `code` and a `traceId`, and every refusal is stored as a `Rejected` row in `ProcessLog` with the same code and trace ID (request bodies are never stored), so both sides can match it up:
+
+```sql
+-- Refused requests, newest first
+SELECT datetime(OccurredAtUtc / 1000, 'unixepoch') AS At, Operation, HttpStatusCode, ErrorCode, TraceId
+FROM ProcessLog WHERE Outcome = 'Rejected' ORDER BY OccurredAtUtc DESC LIMIT 50;
+```
+
+A production feed would need three things the assignment leaves open. They are product decisions for the feed's owners, so they are listed rather than guessed:
+- a stable person ID from the source (and an event ID, so retries are recognized rather than refused);
+- a correction operation that rebuilds a person's intervals when earlier or corrected duties arrive;
+- a policy for scheduled assignments, for example holding them as pending until their start date.
 
 ### Starter defects fixed
 
@@ -211,7 +283,7 @@ Each was first captured as a failing test in Increment 1 and now passes.
 
 ## API
 
-JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Errors are ProblemDetails with a stable `code` and a `traceId`. Branch on `code`, never on message text. Swagger (Development) documents every route.
+JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Every astronaut summary carries `status` (`active` or `retired`; no summary means no assignments) and every duty carries `isRetirement`. Errors are ProblemDetails with a stable `code` and a `traceId`. Branch on `code`, never on message text. Swagger (Development) documents every route.
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
@@ -220,13 +292,19 @@ JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Errors are P
 | `GET /api/people/{id}/duties` | People.Read | The person and their duties, newest first, as one consistent snapshot |
 | `GET /api/people/{id}/duties/{dutyId}` | People.Read | One duty |
 | `POST /api/people` `{name, firstName?, middleName?, lastName?}` | People.Write | Create (namesakes allowed); 201 with Location |
-| `PUT /api/people/{id}` `{name, …parts, version}` | People.Write | Replace names; a stale `version` gets 409 |
+| `PUT /api/people/{id}` `{name, …parts, version}` | People.Write | Replace names; a missing `version` gets 428 `version_required`, a stale one 409 |
 | `POST /api/people/{id}/duties` `{rank, dutyTitle, dutyStartDate, expectedVersion?}` | Duties.Write | Add a duty; 201 with Location |
 | `GET /api/metadata` | People.Read | Business date and time zone (UTC) |
-| `GET /Person`, `GET /Person/{name}`, `POST /Person`, `PUT /Person/by-name?name=` | as above | The assignment's name-based operations, kept for compatibility |
+| `GET /Person?name` | People.Read | **Every** person, as a JSON array streamed while it is read, in directory order; optional `name` prefix |
+| `GET /Person/{name}`, `POST /Person`, `PUT /Person/by-name?name=` `{name, expectedVersion?}` | as above | Get, create and add/update a person by name |
 | `GET /AstronautDuty/{name}`, `POST /AstronautDuty` `{name, rank, dutyTitle, dutyStartDate}` | as above | Name-based duty history and duty creation |
 
-Error codes: `validation`, `not_found`, `ambiguous_name`, `chronology_conflict`, `first_duty_retirement`, `already_retired`, `concurrency_conflict`, `version_required`, `service_unavailable` (503, retry later), `unauthenticated` (401), `forbidden` (403), `csrf_failed`, `invalid_credentials`, `bad_request`, `internal_error`.
+Error codes: `validation`, `not_found`, `ambiguous_name`, `chronology_conflict`, `first_duty_retirement`, `already_retired`, `concurrency_conflict`, `version_required` (428), `service_unavailable` (503, retry later), `unauthenticated` (401), `forbidden` (403), `csrf_failed`, `invalid_credentials`, `bad_request`, `internal_error`.
+
+**The assignment's routes keep their URLs, not their exact contract.** The starter's `success`/`message`/`responseCode` envelope is gone: successes return the resource and errors are ProblemDetails, as on every other route. Unknown body fields are a 400.
+- `GET /Person` returns everyone, as the assignment asks. It streams rows from the database as it writes the response, so server memory stays flat however many people there are. The UI uses the paged `/api/people` instead, because a screen should never load everyone. Once streaming has started the 200 is already sent, so a database failure part-way ends the response early (logged as `Failed`) instead of returning an error body.
+- `POST /AstronautDuty` still accepts the starter's date-time form (`2024-03-10T00:00:00`, with or without an offset) as well as `YYYY-MM-DD`. The date is taken exactly as written, never converted between time zones. The ID route accepts `YYYY-MM-DD` only.
+- A missing version is 428 `version_required` on both rename routes; a stale one is 409 `concurrency_conflict`.
 
 ## Sign-in and permissions
 
@@ -291,7 +369,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-14: **145 tests pass; line coverage 94.1% (1506/1601), branch coverage 83.3% (349/419)**. By layer: Domain 98.8%, Application 96.6%, API 93.3%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
+Measured on 2026-10-14: **157 tests pass; line coverage 94.2% (1547/1643), branch coverage 83.7% (360/430)**. By layer: Domain 98.8%, Application 96.5%, API 93.4%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
@@ -310,7 +388,7 @@ Test isolation:
 - API tests run the real application against an isolated in-memory SQLite database per test. Concurrency tests use a temporary file database instead, because in-memory SQLite locks differently.
 - Temporary database files live under `%TEMP%/stargate-tests/<run>` and are deleted when the run ends. Folders left by interrupted runs are removed by the next run. Tests never touch `starbase.db`.
 
-The UI has 116 unit tests (`npm test`: stores, guards, date formatting and serialization across time zones, timeline, return-URL safety, and the admin dialogs' validation, server-error handling, stale-version and unknown-outcome behaviour). It also has 25 browser tests (`npm run e2e`), covering:
+The UI has 117 unit tests (`npm test`: stores, guards, date formatting and serialization across time zones, timeline, return-URL safety, and the admin dialogs' validation, server-error handling, stale-version and unknown-outcome behaviour). It also has 25 browser tests (`npm run e2e`), covering:
 - the introduction page;
 - sign-in and session revocation;
 - search and paging;
@@ -341,9 +419,10 @@ The browser tests create uniquely named people (`E2E Admin …`) on each run, as
 **Not built:**
 - Dark mode.
 - Converting a populated database.
-- Integration with the external data source the assignment mentions (no interface for it was supplied).
+- Integration with the external data source the assignment mentions (no interface for it was supplied; see [Ingesting the external feed](#ingesting-the-external-feed)).
 
 **Known untested paths:**
 - The Cancelled and escaped-exception branches of request-outcome logging.
 - A rename racing a duty append. Both take the same write lock, so they serialize by construction.
+- A database failure after `GET /Person` has started streaming (the response ends early).
 - Lock contention under load.

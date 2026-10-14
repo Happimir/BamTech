@@ -37,6 +37,12 @@ builder.Services.AddControllers(options =>
             context.HttpContext.RequestServices.GetService<OperationContext>()?.ErrorCode = ErrorCodes.Validation;
             return new BadRequestObjectResult(problem) { ContentTypes = { ControllerBaseExtensions.ProblemJson } };
         };
+        // The framework's title/type table has no 428 (a missing version); give it the same shape as the others.
+        options.ClientErrorMapping[StatusCodes.Status428PreconditionRequired] = new ClientErrorData
+        {
+            Title = "Precondition Required",
+            Link = "https://www.rfc-editor.org/rfc/rfc6585#section-3"
+        };
     });
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();

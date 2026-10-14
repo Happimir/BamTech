@@ -12,6 +12,14 @@ namespace StargateAPI.Domain
         public const int MaxNormalizedLength = 1200;
 
         /// <summary>
+        /// The stored display spelling: trimmed and NFC-normalized, case and punctuation untouched.
+        /// Canonically equivalent input (a precomposed "é" or "e" plus a combining accent) is then
+        /// the same stored value, so re-sending a name is never mistaken for a rename.
+        /// Throws <see cref="ArgumentException"/> for invalid UTF-16; validate input first.
+        /// </summary>
+        public static string Canonical(string value) => value.Trim().Normalize(NormalizationForm.FormC);
+
+        /// <summary>
         /// Trim, NFC, invariant uppercase, NFC again. Accents and internal whitespace are kept:
         /// "José" and "Jose" are different names, as are "Mary Ann" and "Mary  Ann".
         /// </summary>

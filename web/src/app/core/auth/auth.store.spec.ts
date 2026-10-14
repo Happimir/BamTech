@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { AuthMe } from '../api/api.models';
+import { AuthMe } from '../data-access/api.models';
 import { AuthStore } from './auth.store';
 
 const admin: AuthMe = {

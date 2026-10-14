@@ -65,7 +65,7 @@ namespace StargateAPI.Domain
         public IReadOnlyList<string> ReplaceNames(string name, string? firstName, string? middleName, string? lastName)
         {
             var changed = new List<string>();
-            if (Name != name.Trim()) changed.Add("name");
+            if (Name != NameNormalizer.Canonical(name)) changed.Add("name");
             if (FirstName != NullIfBlank(firstName)) changed.Add("firstName");
             if (MiddleName != NullIfBlank(middleName)) changed.Add("middleName");
             if (LastName != NullIfBlank(lastName)) changed.Add("lastName");
@@ -85,7 +85,7 @@ namespace StargateAPI.Domain
         /// </summary>
         public bool ChangeDisplayName(string name)
         {
-            if (Name == name.Trim())
+            if (Name == NameNormalizer.Canonical(name))
             {
                 return false;
             }
@@ -97,7 +97,7 @@ namespace StargateAPI.Domain
 
         private void SetNames(string name, string? firstName, string? middleName, string? lastName)
         {
-            Name = name.Trim();
+            Name = NameNormalizer.Canonical(name);
             NormalizedName = NameNormalizer.Normalize(Name);
             FirstName = NullIfBlank(firstName);
             MiddleName = NullIfBlank(middleName);
@@ -105,6 +105,6 @@ namespace StargateAPI.Domain
         }
 
         private static string? NullIfBlank(string? value) =>
-            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            string.IsNullOrWhiteSpace(value) ? null : NameNormalizer.Canonical(value);
     }
 }

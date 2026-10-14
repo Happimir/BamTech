@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Tests.Infrastructure;
 
@@ -135,6 +136,43 @@ public class DutyAssignmentApiTests
     }
 
     [Fact]
+    public async Task Rule6_status_and_retirement_flags_are_reported_by_the_server_through_a_whole_career()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var id = await api.SeedPersonAsync("Sally Ride");
+
+        async Task<string?> StatusAsync()
+        {
+            // Every read that carries the summary reports the same status.
+            var person = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}", Ct))).GetProperty("astronaut");
+            var row = (await Json.ReadAsync(await api.Client.GetAsync("/api/people?name=sally", Ct)))
+                .GetProperty("items")[0].GetProperty("astronaut");
+            var streamed = (await Json.ReadAsync(await api.Client.GetAsync("/Person?name=sally", Ct)))[0].GetProperty("astronaut");
+            if (person.ValueKind == System.Text.Json.JsonValueKind.Null)
+            {
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, row.ValueKind);
+                return null;
+            }
+            var status = person.GetProperty("status").GetString();
+            Assert.Equal(status, row.GetProperty("status").GetString());
+            Assert.Equal(status, streamed.GetProperty("status").GetString());
+            return status;
+        }
+
+        var before = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01");
+        var serving = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "CPT", " retired ", "2025-01-01");
+        var retired = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "MAJ", "Commander", "2026-01-01");
+        var reactivated = await StatusAsync();
+
+        Assert.Equal([null, "active", "retired", "active"], new[] { before, serving, retired, reactivated });
+        var duties = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}/duties", Ct))).GetProperty("duties");
+        Assert.Equal([false, true, false], duties.EnumerateArray().Select(d => d.GetProperty("isRetirement").GetBoolean()));
+    }
+
+    [Fact]
     public async Task Stale_expected_version_is_409_and_the_returned_version_allows_the_next_write()
     {
         await using var api = await TestApi.CreateAsync();
@@ -184,6 +222,42 @@ public class DutyAssignmentApiTests
         Assert.True(errors.TryGetProperty("dutyStartDate", out _));
         Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        Assert.Equal(0, await DutyCountAsync(api));
+    }
+
+    [Theory]
+    [InlineData("2024-03-10")]
+    [InlineData("2024-03-10T00:00:00")]          // the starter contract's DateTime form
+    [InlineData("2024-03-10T00:00:00Z")]
+    [InlineData("2024-03-10T23:30:00-05:00")]    // converting to UTC would give March 11
+    [InlineData("2024-03-10T00:30:00+14:00")]    // converting to UTC would give March 9
+    public async Task Legacy_route_accepts_the_starter_date_time_form_and_keeps_the_date_as_written(string sent)
+    {
+        await using var api = await TestApi.CreateAsync();
+        await api.SeedPersonAsync("Grace Hopper");
+
+        var response = await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", sent);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var start = await api.WithContextAsync(context => context.AstronautDuties.Select(d => d.DutyStartDate).SingleAsync());
+        Assert.Equal(new DateOnly(2024, 3, 10), start);
+    }
+
+    [Fact]
+    public async Task Only_the_legacy_route_accepts_date_times_and_neither_accepts_other_formats()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var id = await api.SeedPersonAsync("Grace Hopper");
+
+        var byIdDateTime = await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2024-03-10T00:00:00");
+        var legacyLocalFormat = await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "03/10/2024");
+        var legacyNumber = await api.Client.PostAsJsonAsync("/AstronautDuty",
+            new { name = "Grace Hopper", rank = "1LT", dutyTitle = "Pilot", dutyStartDate = 20240310 }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, byIdDateTime.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, legacyLocalFormat.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, legacyNumber.StatusCode);
+        Assert.Equal("validation", await CodeAsync(legacyNumber));
         Assert.Equal(0, await DutyCountAsync(api));
     }
 
