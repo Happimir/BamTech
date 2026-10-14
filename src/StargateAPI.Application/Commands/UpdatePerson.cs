@@ -4,6 +4,7 @@ using StargateAPI.Application.Abstractions;
 using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
 using StargateAPI.Application.Dtos;
+using StargateAPI.Application.Services;
 using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Application.Commands
@@ -24,14 +25,14 @@ namespace StargateAPI.Application.Commands
     {
         private readonly IStargateDbContext _context;
         private readonly IWriteTransactions _transactions;
-        private readonly TimeProvider _timeProvider;
+        private readonly IAuditTrail _audit;
         private readonly OperationContext _operation;
 
-        public UpdatePersonHandler(IStargateDbContext context, IWriteTransactions transactions, TimeProvider timeProvider, OperationContext operation)
+        public UpdatePersonHandler(IStargateDbContext context, IWriteTransactions transactions, IAuditTrail audit, OperationContext operation)
         {
             _context = context;
             _transactions = transactions;
-            _timeProvider = timeProvider;
+            _audit = audit;
             _operation = operation;
         }
 
@@ -58,27 +59,19 @@ namespace StargateAPI.Application.Commands
             }
 
             // A stale version is a conflict even when the requested names already match.
-            if (person.Version != version)
+            if (person.IsStale(version))
             {
-                return AppError.Conflict(ErrorCodes.ConcurrencyConflict,
-                    "This person was changed by another request. Reload and review before trying again.");
+                return AppError.StaleVersion();
             }
 
             var names = input.Value;
-            var before = (person.Name, person.FirstName, person.MiddleName, person.LastName);
-            var changed = person.ReplaceNames(names.Name, names.FirstName, names.MiddleName, names.LastName);
+            var changedFields = person.ReplaceNames(names.Name, names.FirstName, names.MiddleName, names.LastName);
+            var changed = changedFields.Count > 0;
             if (changed)
             {
                 // Field names only: the audit never copies personal name values.
-                var changedFields = new List<string>();
-                if (before.Name != person.Name) changedFields.Add("name");
-                if (before.FirstName != person.FirstName) changedFields.Add("firstName");
-                if (before.MiddleName != person.MiddleName) changedFields.Add("middleName");
-                if (before.LastName != person.LastName) changedFields.Add("lastName");
-
-                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
-                    _operation, "UpdatePerson", _timeProvider.GetUtcNow(), person.Id, dutyId: null,
-                    "Person name fields replaced.", LogContent.Changes(new { ChangedFields = changedFields })));
+                _audit.Record("UpdatePerson", person.Id, dutyId: null, "Person name fields replaced.",
+                    new { ChangedFields = changedFields });
                 await _context.SaveChangesAsync(cancellationToken);
             }
 

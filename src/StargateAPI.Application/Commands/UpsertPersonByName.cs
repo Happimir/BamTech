@@ -4,6 +4,7 @@ using StargateAPI.Application.Abstractions;
 using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
 using StargateAPI.Application.Dtos;
+using StargateAPI.Application.Services;
 using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Application.Commands
@@ -29,14 +30,14 @@ namespace StargateAPI.Application.Commands
     {
         private readonly IStargateDbContext _context;
         private readonly IWriteTransactions _transactions;
-        private readonly TimeProvider _timeProvider;
+        private readonly IAuditTrail _audit;
         private readonly OperationContext _operation;
 
-        public UpsertPersonByNameHandler(IStargateDbContext context, IWriteTransactions transactions, TimeProvider timeProvider, OperationContext operation)
+        public UpsertPersonByNameHandler(IStargateDbContext context, IWriteTransactions transactions, IAuditTrail audit, OperationContext operation)
         {
             _context = context;
             _transactions = transactions;
-            _timeProvider = timeProvider;
+            _audit = audit;
             _operation = operation;
         }
 
@@ -82,9 +83,7 @@ namespace StargateAPI.Application.Commands
                 var created = Person.Create(requestedName);
                 _context.People.Add(created);
                 _operation.PersonId = created.Id;
-                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
-                    _operation, "UpsertPersonByName", _timeProvider.GetUtcNow(), created.Id, dutyId: null,
-                    "Person created by name."));
+                _audit.Record("UpsertPersonByName", created.Id, dutyId: null, "Person created by name.");
                 await _context.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 _operation.MutationCommitted = true;
@@ -95,10 +94,9 @@ namespace StargateAPI.Application.Commands
             _operation.PersonId = person.Id;
             var nameChanges = person.Name != requestedName;
 
-            if (request.ExpectedVersion is { } expected && expected != person.Version)
+            if (person.IsStale(request.ExpectedVersion))
             {
-                return AppError.Conflict(ErrorCodes.ConcurrencyConflict,
-                    "This person was changed by another request. Reload and review before trying again.");
+                return AppError.StaleVersion();
             }
             if (nameChanges && request.ExpectedVersion is null)
             {
@@ -109,10 +107,9 @@ namespace StargateAPI.Application.Commands
             var renamed = person.ChangeDisplayName(requestedName);
             if (renamed)
             {
-                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
-                    _operation, "UpsertPersonByName", _timeProvider.GetUtcNow(), person.Id, dutyId: null,
+                _audit.Record("UpsertPersonByName", person.Id, dutyId: null,
                     "Person renamed by name; structured name parts cleared.",
-                    LogContent.Changes(new { ChangedFields = new[] { "name", "firstName", "middleName", "lastName" } })));
+                    new { ChangedFields = new[] { "name", "firstName", "middleName", "lastName" } });
                 await _context.SaveChangesAsync(cancellationToken);
             }
 

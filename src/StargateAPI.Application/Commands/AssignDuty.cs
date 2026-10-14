@@ -4,6 +4,7 @@ using StargateAPI.Application.Abstractions;
 using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
 using StargateAPI.Application.Queries;
+using StargateAPI.Application.Services;
 using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Application.Commands
@@ -23,11 +24,17 @@ namespace StargateAPI.Application.Commands
     /// <summary>The created duty, its person, and the person's new aggregate version.</summary>
     public sealed record AssignDutyResult(Guid Id, Guid PersonId, Guid Version);
 
+    /// <summary>
+    /// Orchestrates the append: validate, lock, load, apply the domain rules
+    /// (<see cref="CareerTransitions"/>), then save the change and its audit in one transaction.
+    /// </summary>
     public class AssignDutyHandler : IRequestHandler<AssignDuty, Result<AssignDutyResult>>
     {
         private readonly IStargateDbContext _context;
         private readonly IWriteTransactions _transactions;
         private readonly IPersistenceErrors _errors;
+        private readonly IAstronautCareers _careers;
+        private readonly IAuditTrail _audit;
         private readonly TimeProvider _timeProvider;
         private readonly OperationContext _operation;
 
@@ -35,12 +42,16 @@ namespace StargateAPI.Application.Commands
             IStargateDbContext context,
             IWriteTransactions transactions,
             IPersistenceErrors errors,
+            IAstronautCareers careers,
+            IAuditTrail audit,
             TimeProvider timeProvider,
             OperationContext operation)
         {
             _context = context;
             _transactions = transactions;
             _errors = errors;
+            _careers = careers;
+            _audit = audit;
             _timeProvider = timeProvider;
             _operation = operation;
         }
@@ -75,53 +86,34 @@ namespace StargateAPI.Application.Commands
             {
                 return AppError.NotFound("Person not found.");
             }
-
-            if (request.ExpectedVersion is { } expected && expected != person.Version)
+            if (person.IsStale(request.ExpectedVersion))
             {
-                return AppError.Conflict(ErrorCodes.ConcurrencyConflict,
-                    "This person was changed by another request. Reload and review before trying again.");
+                return AppError.StaleVersion();
             }
 
-            var state = new CareerState(
-                await _context.AstronautDetails.SingleOrDefaultAsync(d => d.PersonId == person.Id, cancellationToken),
-                await _context.AstronautDuties.SingleOrDefaultAsync(d => d.PersonId == person.Id && d.DutyEndDate == null, cancellationToken),
-                await _context.AstronautDuties.Where(d => d.PersonId == person.Id).MaxAsync(d => (DateOnly?)d.DutyStartDate, cancellationToken));
-
+            var state = await _careers.LoadStateAsync(person.Id, cancellationToken);
             var assignment = CareerTransitions.AssignDuty(person, state, input.Value);
             if (!assignment.IsSuccess)
             {
                 return assignment.Error;
             }
 
+            var change = assignment.Value;
             try
             {
-                // Save the closure (and version/summary updates) before inserting the new open duty,
-                // so the one-open-duty partial unique index never sees two open rows regardless of
-                // EF's command ordering. Both saves commit or roll back together.
-                await _context.SaveChangesAsync(cancellationToken);
+                await _careers.StageAsync(change, cancellationToken);
 
-                var newDuty = assignment.Value.NewDuty;
-                _context.AstronautDuties.Add(newDuty);
-                if (assignment.Value.NewDetail is { } newDetail)
+                _operation.AstronautDutyId = change.NewDuty.Id;
+                _audit.Record("AssignDuty", person.Id, change.NewDuty.Id, "Duty assigned.", new
                 {
-                    _context.AstronautDetails.Add(newDetail);
-                }
-
-                // The audit commits with the change or not at all.
-                _operation.AstronautDutyId = newDuty.Id;
-                _context.ProcessLogs.Add(ProcessLog.MutationAudit(
-                    _operation, "AssignDuty", _timeProvider.GetUtcNow(), person.Id, newDuty.Id,
-                    "Duty assigned.",
-                    LogContent.Changes(new
-                    {
-                        newDuty.DutyTitle,
-                        newDuty.Rank,
-                        newDuty.DutyStartDate,
-                        FirstAssignment = assignment.Value.NewDetail is not null,
-                        ClosedDutyId = assignment.Value.ClosedDuty?.Id,
-                        ClosedDutyEndDate = assignment.Value.ClosedDuty?.DutyEndDate,
-                        CareerEndDate = (state.Detail ?? assignment.Value.NewDetail)?.CareerEndDate
-                    })));
+                    change.NewDuty.DutyTitle,
+                    change.NewDuty.Rank,
+                    change.NewDuty.DutyStartDate,
+                    FirstAssignment = change.NewDetail is not null,
+                    ClosedDutyId = change.ClosedDuty?.Id,
+                    ClosedDutyEndDate = change.ClosedDuty?.DutyEndDate,
+                    CareerEndDate = (state.Detail ?? change.NewDetail)?.CareerEndDate
+                });
                 await _context.SaveChangesAsync(cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
@@ -134,7 +126,7 @@ namespace StargateAPI.Application.Commands
                     "The duty conflicts with an existing duty for this person. Reload and review.");
             }
 
-            return new AssignDutyResult(assignment.Value.NewDuty.Id, person.Id, person.Version);
+            return new AssignDutyResult(change.NewDuty.Id, person.Id, person.Version);
         }
     }
 }

@@ -52,22 +52,31 @@ namespace StargateAPI.Domain
         public void Touch() => Version = Guid.NewGuid();
 
         /// <summary>
-        /// Replaces all name fields (PUT semantics: omitted parts become null). Returns false, and
-        /// leaves the version unchanged, when nothing actually changes.
+        /// True when the client sent a version and it is no longer current. No version means the
+        /// caller did not ask for the check (optional on duty appends).
         /// </summary>
-        public bool ReplaceNames(string name, string? firstName, string? middleName, string? lastName)
+        public bool IsStale(Guid? expectedVersion) => expectedVersion is { } expected && expected != Version;
+
+        /// <summary>
+        /// Replaces all name fields (PUT semantics: omitted parts become null). Returns the API names
+        /// of the fields that changed, never their values; empty when nothing changes, in which case
+        /// the version is unchanged too.
+        /// </summary>
+        public IReadOnlyList<string> ReplaceNames(string name, string? firstName, string? middleName, string? lastName)
         {
-            if (Name == name.Trim()
-                && FirstName == NullIfBlank(firstName)
-                && MiddleName == NullIfBlank(middleName)
-                && LastName == NullIfBlank(lastName))
+            var changed = new List<string>();
+            if (Name != name.Trim()) changed.Add("name");
+            if (FirstName != NullIfBlank(firstName)) changed.Add("firstName");
+            if (MiddleName != NullIfBlank(middleName)) changed.Add("middleName");
+            if (LastName != NullIfBlank(lastName)) changed.Add("lastName");
+            if (changed.Count == 0)
             {
-                return false;
+                return changed;
             }
 
             SetNames(name, firstName, middleName, lastName);
             Touch();
-            return true;
+            return changed;
         }
 
         /// <summary>

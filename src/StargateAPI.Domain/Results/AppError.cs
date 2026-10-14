@@ -39,6 +39,11 @@ namespace StargateAPI.Domain.Results
             new(ErrorKind.Conflict, ErrorCodes.AmbiguousName,
                 "More than one person has this name. Select the person by ID instead.");
 
+        /// <summary>The person changed after the client read it (see <c>Person.IsStale</c>).</summary>
+        public static AppError StaleVersion() =>
+            new(ErrorKind.Conflict, ErrorCodes.ConcurrencyConflict,
+                "This person was changed by another request. Reload and review before trying again.");
+
         public static AppError Validation(string field, string message) =>
             new(ErrorKind.Validation, ErrorCodes.Validation, "One or more fields are invalid.",
                 new Dictionary<string, string[]> { [field] = [message] });

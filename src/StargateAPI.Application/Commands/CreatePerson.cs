@@ -3,6 +3,7 @@ using StargateAPI.Application.Abstractions;
 using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
 using StargateAPI.Application.Dtos;
+using StargateAPI.Application.Services;
 using StargateAPI.Domain.Results;
 
 namespace StargateAPI.Application.Commands
@@ -20,13 +21,13 @@ namespace StargateAPI.Application.Commands
     public class CreatePersonHandler : IRequestHandler<CreatePerson, Result<PersonDetailDto>>
     {
         private readonly IStargateDbContext _context;
-        private readonly TimeProvider _timeProvider;
+        private readonly IAuditTrail _audit;
         private readonly OperationContext _operation;
 
-        public CreatePersonHandler(IStargateDbContext context, TimeProvider timeProvider, OperationContext operation)
+        public CreatePersonHandler(IStargateDbContext context, IAuditTrail audit, OperationContext operation)
         {
             _context = context;
-            _timeProvider = timeProvider;
+            _audit = audit;
             _operation = operation;
         }
 
@@ -44,10 +45,8 @@ namespace StargateAPI.Application.Commands
 
             // One SaveChanges is one transaction: the person and its audit commit together.
             _operation.PersonId = person.Id;
-            _context.ProcessLogs.Add(ProcessLog.MutationAudit(
-                _operation, "CreatePerson", _timeProvider.GetUtcNow(), person.Id, dutyId: null,
-                "Person created.",
-                LogContent.Changes(new { HasNameParts = names.FirstName is not null || names.MiddleName is not null || names.LastName is not null })));
+            _audit.Record("CreatePerson", person.Id, dutyId: null, "Person created.",
+                new { HasNameParts = names.FirstName is not null || names.MiddleName is not null || names.LastName is not null });
             await _context.SaveChangesAsync(cancellationToken);
             _operation.MutationCommitted = true;
 
