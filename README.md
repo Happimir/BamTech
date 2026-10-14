@@ -4,7 +4,7 @@ Astronaut Career Tracking System (ACTS) technical exercise: the supplied Stargat
 
 - **API** (`src/`, .NET 10, EF Core + SQLite). It is split into onion-architecture layers (Domain, Application, Infrastructure, API) whose references point inward only. All required operations work. The seven rules are enforced in one tested domain operation, and starter defects are fixed. Writes are transactional and race-safe. Success and failure logs are stored in the database. Sign-in uses revocable sessions with Admin and Reader roles.
 - **UI** (`web/`, Angular 22 + Angular Material). A public introduction page; a people directory with search and server paging; person detail with the current assignment above a newest-first duty timeline. Admin dialogs to add people, rename them and add duties, including retirement. Sign-in and sign-out. Loading, empty and error states. Responsive from 360px; checked with axe-core.
-- **Evidence:** 156 API tests at 94.1% line coverage, including architecture tests for the layer rules; 116 UI unit tests; 25 browser tests against the real API.
+- **Evidence:** 157 API tests at 94.2% line coverage, including architecture tests for the layer rules; 117 UI unit tests; 25 browser tests against the real API.
 
 The supplied starter is committed unmodified (`46b669d`), and every later fix is a reviewable diff.
 
@@ -177,7 +177,7 @@ A version token (`version` / `expectedVersion`) protects updates against stale w
 | 3: one current rank/title/start | One summary row per person, updated in the same transaction as each new duty |
 | 4: the current duty has no end date | At most one open duty per person, also enforced by a unique partial index |
 | 5: the previous duty ends the day before the next starts | Start dates must strictly increase per person; the previous duty is closed in the same transaction |
-| 6: RETIRED means retired | The title is canonicalized (`retired` → `RETIRED`); status is derived from the current title |
+| 6: RETIRED means retired | The title is canonicalized (`retired` → `RETIRED`). The API decides status in one place and reports it: `astronaut.status` (`active` / `retired`) and each duty's `isRetirement`. Clients never parse titles |
 | 7: career ends the day before retirement | While retired, career end = retirement start − 1 day; it clears on reactivation |
 
 All of these live in one pure domain operation (`CareerTransitions.AssignDuty`), which validates before changing anything. The handler runs it inside an immediate SQLite write transaction, so concurrent appends cannot interleave.
@@ -211,7 +211,7 @@ Each was first captured as a failing test in Increment 1 and now passes.
 
 ## API
 
-JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Errors are ProblemDetails with a stable `code` and a `traceId`. Branch on `code`, never on message text. Swagger (Development) documents every route.
+JSON is camelCase, IDs are UUID strings and dates are `YYYY-MM-DD`. Every astronaut summary carries `status` (`active` or `retired`; no summary means no assignments) and every duty carries `isRetirement`. Errors are ProblemDetails with a stable `code` and a `traceId`. Branch on `code`, never on message text. Swagger (Development) documents every route.
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
@@ -297,7 +297,7 @@ dotnet test --coverlet --coverlet-output-format cobertura \
   --coverlet-threshold 50 --coverlet-threshold-type line --results-directory TestResults/coverage
 ```
 
-Measured on 2026-10-14: **156 tests pass; line coverage 94.1% (1542/1638), branch coverage 83.6% (358/428)**. By layer: Domain 98.8%, Application 96.5%, API 93.4%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
+Measured on 2026-10-14: **157 tests pass; line coverage 94.2% (1547/1643), branch coverage 83.7% (360/430)**. By layer: Domain 98.8%, Application 96.5%, API 93.4%, Infrastructure 85.7%. This covers all handwritten API code, including authentication, sessions and logging; only generated migrations are excluded, by the file filter above. The rule and transition code is at 90–100%. The lowest file is the demo-account seeder: its command-line path is verified manually.
 
 Coverage is evidence, not the goal. Every guard test was shown to fail by temporarily breaking what it protects. The most important tests:
 
@@ -316,7 +316,7 @@ Test isolation:
 - API tests run the real application against an isolated in-memory SQLite database per test. Concurrency tests use a temporary file database instead, because in-memory SQLite locks differently.
 - Temporary database files live under `%TEMP%/stargate-tests/<run>` and are deleted when the run ends. Folders left by interrupted runs are removed by the next run. Tests never touch `starbase.db`.
 
-The UI has 116 unit tests (`npm test`: stores, guards, date formatting and serialization across time zones, timeline, return-URL safety, and the admin dialogs' validation, server-error handling, stale-version and unknown-outcome behaviour). It also has 25 browser tests (`npm run e2e`), covering:
+The UI has 117 unit tests (`npm test`: stores, guards, date formatting and serialization across time zones, timeline, return-URL safety, and the admin dialogs' validation, server-error handling, stale-version and unknown-outcome behaviour). It also has 25 browser tests (`npm run e2e`), covering:
 - the introduction page;
 - sign-in and session revocation;
 - search and paging;
