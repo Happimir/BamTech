@@ -35,6 +35,8 @@ export const PersonDetailStore = signalStore(
       person,
       status: computed(() => personStatus(person()?.astronaut ?? null)),
       timeline: computed(() => buildTimeline(snapshot()?.duties ?? [])),
+      /** Start of the newest duty (duties are newest first); a new duty must start after it. */
+      latestDutyStart: computed(() => snapshot()?.duties[0]?.dutyStartDate ?? null),
       isUnavailable: computed(() => isUnavailable(_details.error())),
       view: computed<DetailView>(() => {
         if (!isValidId()) return 'not-found';

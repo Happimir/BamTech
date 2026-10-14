@@ -1,0 +1,80 @@
+<h2 mat-dialog-title>{{ title }}</h2>
+<form [formRoot]="nameForm" class="dialog-form">
+  <mat-dialog-content>
+    <p class="context">
+      @if (mode === 'rename') {
+        Saved as <strong>{{ person()?.name }}</strong>. Renaming keeps their ID and duty history.
+      } @else {
+        A new person starts with no astronaut record. People may share a name; each gets their own ID.
+      }
+    </p>
+
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Full name</mat-label>
+      <input matInput [formField]="nameForm.name" autocomplete="off" />
+      <mat-hint>As it should appear in the directory and on their record</mat-hint>
+      @for (error of nameForm.name().errors(); track error.kind) {
+        <mat-error>{{ error.message }}</mat-error>
+      }
+    </mat-form-field>
+
+    <p class="context">Name parts are optional and stored exactly as entered.</p>
+    <div class="parts">
+      <mat-form-field>
+        <mat-label>First name</mat-label>
+        <input matInput [formField]="nameForm.firstName" autocomplete="off" />
+        @for (error of nameForm.firstName().errors(); track error.kind) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label>Middle name</mat-label>
+        <input matInput [formField]="nameForm.middleName" autocomplete="off" />
+        @for (error of nameForm.middleName().errors(); track error.kind) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label>Last name</mat-label>
+        <input matInput [formField]="nameForm.lastName" autocomplete="off" />
+        @for (error of nameForm.lastName().errors(); track error.kind) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
+      </mat-form-field>
+    </div>
+
+    @if (suggestion(); as suggested) {
+      <div class="suggestion">
+        <p>From the parts: <strong>{{ suggested }}</strong></p>
+        <button mat-stroked-button type="button" (click)="useSuggestion(suggested)">
+          Use as full name
+        </button>
+      </div>
+    }
+
+  </mat-dialog-content>
+
+  <!-- Outside the scrolling content: the outcome and its action are always in view. -->
+  <div class="notice-slot" role="alert">
+    @if (notice(); as current) {
+      <div class="notice" [class.notice--info]="current.kind === 'reloaded'">
+        <p>{{ current.message }}</p>
+        @if (current.kind === 'stale') {
+          <button mat-stroked-button type="button" (click)="reload()">Reload</button>
+        }
+        @if (current.kind === 'uncertain-create' && directoryQuery(); as query) {
+          <a mat-stroked-button routerLink="/people" [queryParams]="query" (click)="close()">
+            Check the directory
+          </a>
+        }
+      </div>
+    }
+  </div>
+
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" mat-dialog-close [disabled]="nameForm().submitting()">Cancel</button>
+    <button mat-flat-button type="submit" class="save-button" [disabled]="nameForm().submitting()">
+      {{ nameForm().submitting() ? 'Saving…' : saveLabel() }}
+    </button>
+  </mat-dialog-actions>
+</form>

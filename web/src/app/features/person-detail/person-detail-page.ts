@@ -1,12 +1,27 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { Location } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  Injector,
+  signal,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
+import { AuthStore } from '../../core/auth/auth.store';
 import { formatCalendarDate } from '../../core/dates/calendar-date';
+import { DutyDialog, DutySaved } from '../admin/duty-dialog';
+import { PersonDialog, PersonDialogMode, PersonDialogResult } from '../admin/person-dialog';
+import { ADMIN_DIALOG_CONFIG } from '../admin/write-outcome';
 import { StatusBadge } from '../people/status-badge';
 import { RETIRED_DUTY_TITLE } from '../people/person-status';
 import { directoryReturnUrl } from './directory-return';
@@ -29,6 +44,16 @@ export class PersonDetailPage {
   protected readonly backLink = inject(Router).parseUrl(directoryReturnUrl(inject(Location).getState()));
 
   protected readonly idCopied = signal(false);
+
+  // Write actions appear only with the matching capability; a Reader sees none of them.
+  private readonly capabilities = inject(AuthStore).capabilities;
+  protected readonly canRename = computed(() => this.capabilities().has('People.Write'));
+  protected readonly canAddDuty = computed(() => this.capabilities().has('Duties.Write'));
+
+  private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly injector = inject(Injector);
+  private openDialog: MatDialogRef<unknown> | undefined;
 
   /** Summary-card facts. Career end appears only while retired (it clears on reactivation). */
   protected readonly summary = computed(() => {
@@ -60,6 +85,40 @@ export class PersonDetailPage {
     effect(() => {
       const person = this.store.person();
       title.setTitle(person ? `${person.name} · ACTS` : 'Person · ACTS');
+    });
+    // Leaving the page (including on session expiry) never strands a dialog over another page.
+    inject(DestroyRef).onDestroy(() => this.openDialog?.close());
+  }
+
+  protected rename(): void {
+    const ref = this.dialog.open<PersonDialog, PersonDialogMode, PersonDialogResult>(PersonDialog, {
+      ...ADMIN_DIALOG_CONFIG,
+      data: 'rename',
+      injector: this.injector,
+    });
+    this.afterSave(ref, (result) => (result ? 'Name updated' : undefined));
+  }
+
+  protected addDuty(): void {
+    const ref = this.dialog.open<DutyDialog, unknown, DutySaved>(DutyDialog, {
+      ...ADMIN_DIALOG_CONFIG,
+      injector: this.injector,
+    });
+    this.afterSave(ref, (saved) => saved);
+  }
+
+  /** Success only: refresh the record and confirm. Failures stay inline in the dialog. */
+  private afterSave<R>(
+    ref: MatDialogRef<unknown, R>,
+    message: (result: R | undefined) => string | undefined,
+  ): void {
+    this.openDialog = ref;
+    ref.afterClosed().subscribe((result) => {
+      this.openDialog = undefined;
+      const text = message(result);
+      if (!text) return;
+      this.store.reload();
+      this.snackBar.open(text, undefined, { duration: 4000 });
     });
   }
 

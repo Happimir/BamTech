@@ -1,0 +1,112 @@
+// Shared by the admin dialogs (create, rename, add duty).
+
+.dialog-form {
+  display: contents;
+}
+
+mat-dialog-content {
+  display: grid;
+  gap: var(--acts-space-1);
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.context {
+  margin: 0 0 var(--acts-space-3);
+  color: var(--acts-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.parts {
+  display: grid;
+  gap: 0 var(--acts-space-3);
+}
+
+@media (min-width: 600px) {
+  .parts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kind {
+  display: grid;
+  gap: var(--acts-space-1);
+  margin-bottom: var(--acts-space-4);
+}
+
+.kind-label {
+  font: var(--mat-sys-label-large);
+  color: var(--acts-text-secondary);
+}
+
+.field-error {
+  margin: 0;
+  color: var(--acts-error);
+  font: var(--mat-sys-body-small);
+}
+
+// Neutral information, not an alarm: what the server will derive.
+.preview,
+.suggestion {
+  padding: var(--acts-space-3) var(--acts-space-4);
+  border: 1px solid var(--acts-border);
+  border-radius: 8px;
+  background: var(--acts-canvas);
+}
+
+.preview-title {
+  margin: 0 0 var(--acts-space-1);
+  font: var(--mat-sys-label-large);
+}
+
+.preview ul {
+  margin: 0;
+  padding-inline-start: var(--acts-space-6);
+}
+
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--acts-space-2);
+  margin-bottom: var(--acts-space-3);
+
+  p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.notice-slot:not(:empty) {
+  padding: var(--acts-space-3) 24px 0;
+}
+
+// Dynamic subscripts (long hints and errors wrap at phone width) get the spacing a fixed one reserves.
+mat-form-field[subscriptSizing="dynamic"] {
+  margin-bottom: var(--acts-space-4);
+}
+
+.notice {
+  display: grid;
+  justify-items: start;
+  gap: var(--acts-space-2);
+  padding: var(--acts-space-3) var(--acts-space-4);
+  border: 1px solid var(--acts-error);
+  border-radius: 8px;
+
+  p {
+    margin: 0;
+  }
+}
+
+.notice--info {
+  border-color: var(--acts-border);
+}
+
+// Room for the longest label, so the button keeps its width while saving.
+.save-button {
+  min-width: 10rem;
+}

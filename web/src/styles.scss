@@ -25,6 +25,14 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+// A wrapping row of page actions (e.g. the admin actions on a person's record).
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--acts-space-2);
+  margin-top: var(--acts-space-4);
+}
+
 // Text for assistive technology only.
 .visually-hidden {
   position: absolute;
