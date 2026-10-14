@@ -136,6 +136,43 @@ public class DutyAssignmentApiTests
     }
 
     [Fact]
+    public async Task Rule6_status_and_retirement_flags_are_reported_by_the_server_through_a_whole_career()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var id = await api.SeedPersonAsync("Sally Ride");
+
+        async Task<string?> StatusAsync()
+        {
+            // Every read that carries the summary reports the same status.
+            var person = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}", Ct))).GetProperty("astronaut");
+            var row = (await Json.ReadAsync(await api.Client.GetAsync("/api/people?name=sally", Ct)))
+                .GetProperty("items")[0].GetProperty("astronaut");
+            var streamed = (await Json.ReadAsync(await api.Client.GetAsync("/Person?name=sally", Ct)))[0].GetProperty("astronaut");
+            if (person.ValueKind == System.Text.Json.JsonValueKind.Null)
+            {
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, row.ValueKind);
+                return null;
+            }
+            var status = person.GetProperty("status").GetString();
+            Assert.Equal(status, row.GetProperty("status").GetString());
+            Assert.Equal(status, streamed.GetProperty("status").GetString());
+            return status;
+        }
+
+        var before = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01");
+        var serving = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "CPT", " retired ", "2025-01-01");
+        var retired = await StatusAsync();
+        await api.PostDutyByIdAsync(id, "MAJ", "Commander", "2026-01-01");
+        var reactivated = await StatusAsync();
+
+        Assert.Equal([null, "active", "retired", "active"], new[] { before, serving, retired, reactivated });
+        var duties = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}/duties", Ct))).GetProperty("duties");
+        Assert.Equal([false, true, false], duties.EnumerateArray().Select(d => d.GetProperty("isRetirement").GetBoolean()));
+    }
+
+    [Fact]
     public async Task Stale_expected_version_is_409_and_the_returned_version_allows_the_next_write()
     {
         await using var api = await TestApi.CreateAsync();
