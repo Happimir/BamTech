@@ -43,15 +43,14 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-// Summary (~1/3) beside history (~2/3) on wide screens; stacked otherwise. Cards keep their
-// own height: a long timeline must not stretch the summary.
+// Full-width rows: the current assignment on top, the duty history below. Each card uses the
+// whole content width, so the summary's facts sit side by side instead of leaving empty space
+// beside a short history.
 .cards {
   display: grid;
   gap: var(--acts-space-4);
-  align-items: start;
 
-  @media (min-width: 840px) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  @include tokens.from(tablet) {
     gap: var(--acts-space-6);
   }
 }
@@ -82,13 +81,18 @@ h1 {
   font: var(--mat-sys-title-small);
 }
 
+// Facts flow across the card in as many columns as fit (two on a phone), wrapping as needed.
 .facts {
   display: grid;
-  gap: var(--acts-space-3);
+  // 128px fits two columns in a 360px viewport (296px of card content) with the 24px gap.
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr));
+  gap: var(--acts-space-4) var(--acts-space-6);
   margin: 0;
 
   div {
     display: grid;
+    // Keep each label/value pair at the top when a long value makes its row taller.
+    align-content: start;
     gap: 2px;
   }
 
