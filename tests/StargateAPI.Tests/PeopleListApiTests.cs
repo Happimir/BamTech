@@ -1,10 +1,17 @@
 using System.Net;
 using System.Text.Json;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using StargateAPI.Application.Queries;
+using StargateAPI.Domain;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;
 
-/// <summary>Paging correctness (no gaps or duplicates, deterministic order) and literal prefix search.</summary>
+/// <summary>
+/// Paging correctness (no gaps or duplicates, deterministic order), literal prefix search, and the
+/// legacy full list, which streams everyone in the same order.
+/// </summary>
 public class PeopleListApiTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -43,15 +50,67 @@ public class PeopleListApiTests
     }
 
     [Fact]
-    public async Task Legacy_list_route_returns_the_same_paged_contract()
+    public async Task Legacy_list_route_returns_everyone_beyond_the_page_limit_as_the_directory_rows()
     {
         await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("Grace Hopper");
+        await api.WithContextAsync(async context =>
+        {
+            // More people than the largest page, including namesakes (ordered by ID).
+            context.People.AddRange(Enumerable.Range(0, GetPeopleHandler.MaxPageSize + 20)
+                .Select(i => Person.Create($"Person {i:D3}"))
+                .Append(Person.Create("Alex Smith"))
+                .Append(Person.Create("Alex Smith")));
+            await context.SaveChangesAsync();
+        });
 
-        var legacy = await (await api.Client.GetAsync("/Person?page=1&pageSize=10", Ct)).Content.ReadAsStringAsync(Ct);
-        var current = await (await api.Client.GetAsync("/api/people?page=1&pageSize=10", Ct)).Content.ReadAsStringAsync(Ct);
+        var all = await Json.ReadAsync(await api.Client.GetAsync("/Person", Ct));
+        var paged = new List<JsonElement>();
+        for (var page = 1; page <= 2; page++)
+        {
+            paged.AddRange((await GetAsync(api, $"?page={page}&pageSize={GetPeopleHandler.MaxPageSize}"))
+                .GetProperty("items").EnumerateArray());
+        }
 
-        Assert.Equal(current, legacy);
+        Assert.Equal(JsonValueKind.Array, all.ValueKind);
+        Assert.Equal(GetPeopleHandler.MaxPageSize + 22, all.GetArrayLength());
+        // Same rows, same order as walking the directory's pages.
+        Assert.Equal(paged.Select(row => row.GetRawText()), all.EnumerateArray().Select(row => row.GetRawText()));
+    }
+
+    [Fact]
+    public async Task Legacy_list_route_filters_by_name_prefix_and_rejects_an_invalid_filter_before_streaming()
+    {
+        await using var api = await TestApi.CreateAsync();
+        foreach (var name in new[] { "Bravo", "Alpha", "Alex Smith" })
+        {
+            await api.SeedPersonAsync(name);
+        }
+
+        var filtered = await Json.ReadAsync(await api.Client.GetAsync("/Person?name=al", Ct));
+        var invalid = await api.Client.GetAsync("/Person?name=" + new string('x', 301), Ct);
+
+        Assert.Equal(["Alex Smith", "Alpha"], filtered.EnumerateArray().Select(p => p.GetProperty("name").GetString()));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("validation", (await Json.ReadAsync(invalid)).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Full_list_is_read_while_it_is_enumerated_not_loaded_up_front()
+    {
+        await using var api = await TestApi.CreateAsync();
+        await api.SeedPersonAsync("Alpha");
+        await using var scope = api.Services.CreateAsyncScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new GetAllPeople(), Ct);
+        // Added after the handler returned: only a sequence that queries as it is read can see it.
+        await api.SeedPersonAsync("Bravo");
+        var names = new List<string>();
+        await foreach (var person in result.Value!.WithCancellation(Ct))
+        {
+            names.Add(person.Name);
+        }
+
+        Assert.Equal(["Alpha", "Bravo"], names);
     }
 
     [Fact]

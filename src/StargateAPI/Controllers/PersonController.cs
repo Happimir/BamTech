@@ -24,14 +24,16 @@ namespace StargateAPI.Controllers
         }
 
         /// <summary>
-        /// All people, one page at a time (default 25, maximum 100). Changed from the starter's
-        /// unbounded list; traverse pages to retrieve everyone. Same query as GET /api/people.
+        /// Every person, as a JSON array streamed while it is read (server memory stays flat however
+        /// many people there are), in directory order; optionally filtered by a case-insensitive
+        /// name prefix. For a UI, use the paged GET /api/people. A failure after streaming has
+        /// started ends the response early (the 200 is already sent) and is logged as Failed.
         /// </summary>
         [HttpGet("")]
-        public async Task<IActionResult> GetPeople(
-            [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? name, CancellationToken cancellationToken)
+        [ProducesResponseType<IEnumerable<PersonSummaryDto>>(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetPeople([FromQuery] string? name, CancellationToken cancellationToken)
         {
-            var result = await _mediator.Send(new GetPeople(page, pageSize, name), cancellationToken);
+            var result = await _mediator.Send(new GetAllPeople(name), cancellationToken);
             return this.ToActionResult(result, Ok);
         }
 

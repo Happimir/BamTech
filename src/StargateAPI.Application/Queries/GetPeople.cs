@@ -46,17 +46,9 @@ namespace StargateAPI.Application.Queries
                 errors["page"] = ["Page is out of range."];
             }
 
-            string? prefix = null;
-            if (!string.IsNullOrWhiteSpace(request.Name))
+            if (!PeopleDirectory.TryPrefix(request.Name, out var prefix, out var nameError))
             {
-                if (NameNormalizer.TryNormalize(request.Name, out var key, out var nameError))
-                {
-                    prefix = key;
-                }
-                else
-                {
-                    errors["name"] = [nameError!];
-                }
+                errors["name"] = [nameError!];
             }
 
             if (errors.Count > 0)
@@ -64,33 +56,13 @@ namespace StargateAPI.Application.Queries
                 return AppError.Validation(errors);
             }
 
-            var people = _context.People.AsNoTracking();
-            if (prefix is not null)
-            {
-                // EF translates StartsWith with a parameter to LIKE with the parameter's own %, _
-                // and escape characters escaped, so they match literally (pinned by tests).
-                people = people.Where(p => p.NormalizedName.StartsWith(prefix));
-            }
+            var people = PeopleDirectory.Matching(_context.People.AsNoTracking(), prefix);
 
             // Count and page are separate queries: a live view, not a cross-request snapshot.
             var totalCount = await people.CountAsync(cancellationToken);
-            var items = await people
-                .OrderBy(p => p.NormalizedName)
-                .ThenBy(p => p.Id)
+            var items = await PeopleDirectory.InDirectoryOrder(people)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(p => new PersonSummaryDto(
-                    p.Id,
-                    p.Name,
-                    p.Version,
-                    p.AstronautDetail == null
-                        ? null
-                        : new AstronautSummaryDto(
-                            p.AstronautDetail.CurrentRank,
-                            p.AstronautDetail.CurrentDutyTitle,
-                            p.AstronautDetail.CurrentDutyStartDate,
-                            p.AstronautDetail.CareerStartDate,
-                            p.AstronautDetail.CareerEndDate)))
                 .ToListAsync(cancellationToken);
 
             var totalPages = totalCount == 0 ? 0 : (int)((totalCount + (long)pageSize - 1) / pageSize);
