@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { Capability } from '../api/api.models';
-import { DEFAULT_HOME_URL } from '../navigation/return-url';
+import { Capability } from '../data-access/api.models';
+import { DEFAULT_HOME_URL } from '../utils/return-url';
 import { AuthStore } from './auth.store';
 
 /** Navigation UX only; the API enforces every policy. */
