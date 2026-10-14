@@ -31,8 +31,11 @@ There is no database server to install: the API uses a local SQLite file.
 dotnet tool restore                               # installs the pinned dotnet-ef locally
 dotnet build                                      # restores packages; dotnet ef needs them
 dotnet ef database update --project src/StargateAPI.Infrastructure --startup-project src/StargateAPI
+
+# One-time setup: creates the demo accounts, then exits (it does not start the server)
 dotnet run --project src/StargateAPI --launch-profile https -- seed-demo-users
 
+# Start the API (run this whenever you want the app running)
 dotnet run --project src/StargateAPI --launch-profile https
 ```
 
@@ -144,15 +147,11 @@ src/StargateAPI                 API host and composition root
 
 ## Design decisions
 
-### Identity: rule 1 replaced, with the recruiter's agreement
+The assignment leaves several points open or in tension with each other, and some ambiguity is part of the exercise. Where it is silent or a literal reading would weaken the system, I followed established practice for this kind of record-keeping system. Each such choice is documented below with its reasoning, and enforced by tests.
 
-Rule 1 ("a person is uniquely identified by their name") is deliberately replaced by stable identifiers. Names change and can be shared; a career history must stay attached to the same person regardless. I raised this with the recruiter before changing it:
+### Identity: stable IDs instead of names (rule 1)
 
-> "I would ignore that ask. Design it as you see fit based on what you see as best practices. I would follow that line of thought throughout."
-
-and, on remaining ambiguities (including the .NET 10 target):
-
-> "You are free to do as you please across the board. … some ambiguity is there by design. That is part of the exercise."
+Rule 1 ("a person is uniquely identified by their name") is deliberately replaced by stable identifiers, as is standard for records about people. Names change and can be shared, but a career history must stay attached to the same person. Treating a name as the key would merge namesakes and break history on a rename. Name-based routes are kept for compatibility, with ambiguous names refused rather than guessed.
 
 | | Starter | Now |
 | --- | --- | --- |
