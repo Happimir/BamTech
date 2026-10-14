@@ -13,7 +13,8 @@ namespace StargateAPI.Controllers
     /// </summary>
     public sealed class RequestOutcomeLoggingMiddleware
     {
-        // Documentation and business-calendar metadata are excluded to avoid log noise.
+        // Documentation and business-calendar metadata are excluded to avoid log noise, as are
+        // endpoints marked SkipRequestOutcomeLog (the hosted UI's index.html).
         private static readonly PathString[] ExcludedPaths = ["/swagger", "/api/metadata"];
         private static readonly TimeSpan LogWriteTimeout = TimeSpan.FromSeconds(2);
 
@@ -34,7 +35,8 @@ namespace StargateAPI.Controllers
 
         public async Task InvokeAsync(HttpContext httpContext, OperationContext operation)
         {
-            if (ExcludedPaths.Any(path => httpContext.Request.Path.StartsWithSegments(path)))
+            if (ExcludedPaths.Any(path => httpContext.Request.Path.StartsWithSegments(path))
+                || httpContext.GetEndpoint()?.Metadata.GetMetadata<SkipRequestOutcomeLog>() is not null)
             {
                 await _next(httpContext);
                 return;

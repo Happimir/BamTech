@@ -6,6 +6,7 @@ using StargateAPI.Application;
 using StargateAPI.Application.Logging;
 using StargateAPI.Controllers;
 using StargateAPI.Domain.Results;
+using StargateAPI.Hosting;
 using StargateAPI.Infrastructure;
 using StargateAPI.Infrastructure.Identity;
 using StargateAPI.Security;
@@ -64,7 +65,14 @@ if (args.Contains(DemoUserSeeder.Command))
 }
 
 // Configure the HTTP request pipeline.
-// Outermost: records one outcome per request after exception handling has produced the response.
+// Optional: the built Angular app on the same origin (see SpaHosting); null leaves the API as is.
+var spaFiles = SpaHosting.ResolveFiles(app.Configuration, app.Environment);
+if (spaFiles is not null)
+{
+    app.UseSpaStaticFiles(spaFiles);
+}
+
+// Outermost for API requests: records one outcome per request after exception handling has produced the response.
 app.UseMiddleware<RequestOutcomeLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -94,6 +102,10 @@ app.Use(async (httpContext, next) =>
 app.UseAuthorization();
 
 app.MapControllers();
+if (spaFiles is not null)
+{
+    app.MapSpaFallback(spaFiles);
+}
 
 app.Run();
 
