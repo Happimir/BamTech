@@ -426,3 +426,5 @@ The browser tests create uniquely named people (`E2E Admin …`) on each run, as
 - A rename racing a duty append. Both take the same write lock, so they serialize by construction.
 - A database failure after `GET /Person` has started streaming (the response ends early).
 - Lock contention under load.
+
+Big Picture Summary, end to end: https://claude.ai/artifact/WNs87S4h94CTSLAxSEuA8o#821edae3-7507.mrt48mjjmn9.31384
