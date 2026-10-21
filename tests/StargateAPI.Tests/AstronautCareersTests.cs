@@ -19,7 +19,7 @@ public class AstronautCareersTests
     {
         await using var api = await TestApi.CreateAsync();
         var id = await api.SeedPersonAsync("Grace Hopper");
-        (await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01")).Succeeded("assignDuty"));
 
         await api.WithContextAsync(async context =>
         {

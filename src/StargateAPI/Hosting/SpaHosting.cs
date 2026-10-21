@@ -16,7 +16,7 @@ namespace StargateAPI.Hosting
         // their 404s stay problem responses. Catch-all values carry no leading slash; the regex
         // constraint is case-insensitive. It rejects an absent value, so the root is mapped too.
         private static readonly string[] FallbackPatterns =
-            ["/", "{*path:regex(^(?!(api|auth|swagger|person|astronautduty)(/|$)).*$):nonfile}"];
+            ["/", "{*path:regex(^(?!(auth|graphql)(/|$)).*$):nonfile}"];
 
         /// <summary>The build output, or null when hosting is off (setting empty or no index.html).</summary>
         public static IFileProvider? ResolveFiles(IConfiguration configuration, IWebHostEnvironment environment)

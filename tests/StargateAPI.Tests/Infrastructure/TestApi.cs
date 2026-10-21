@@ -199,13 +199,21 @@ public sealed class TestApi : IAsyncDisposable
         }
     }
 
-    /// <summary>Posts a duty using the legacy name-based body shape, which the redesign keeps.</summary>
-    public Task<HttpResponseMessage> PostDutyAsync(string name, string rank, string dutyTitle, string dutyStartDate) =>
-        Client.PostAsJsonAsync("/AstronautDuty", new { name, rank, dutyTitle, dutyStartDate });
+    /// <summary>Sends one GraphQL operation as the default client.</summary>
+    public Task<GraphQLResponse> GraphQLAsync(string query, object? variables = null) => Client.GraphQLAsync(query, variables);
 
-    /// <summary>Posts a duty to the stable-ID route.</summary>
-    public Task<HttpResponseMessage> PostDutyByIdAsync(Guid personId, string rank, string dutyTitle, string dutyStartDate, Guid? expectedVersion = null) =>
-        Client.PostAsJsonAsync($"/api/people/{personId}/duties", new { rank, dutyTitle, dutyStartDate, expectedVersion });
+    /// <summary>Assigns a duty to the person with this exact name (the assignment's by-name operation).</summary>
+    public Task<GraphQLResponse> AssignDutyByNameAsync(string name, string rank, string dutyTitle, string? dutyStartDate) =>
+        GraphQLAsync(Operations.AssignDuty, new { input = new { person = new { name }, rank, dutyTitle, dutyStartDate } });
+
+    /// <summary>Assigns a duty to the person with this stable ID.</summary>
+    public Task<GraphQLResponse> AssignDutyAsync(Guid personId, string rank, string dutyTitle, string? dutyStartDate, Guid? expectedVersion = null) =>
+        GraphQLAsync(Operations.AssignDuty,
+            new { input = new { person = new { id = personId }, rank, dutyTitle, dutyStartDate, expectedVersion } });
+
+    /// <summary>The person's current version, read through the API.</summary>
+    public async Task<Guid> VersionAsync(Guid personId) =>
+        (await GraphQLAsync(Operations.Person, new { id = personId }))["person"].GetProperty("version").GetGuid();
 
     public async ValueTask DisposeAsync()
     {

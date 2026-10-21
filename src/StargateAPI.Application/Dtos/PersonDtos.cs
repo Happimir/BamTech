@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using StargateAPI.Domain;
 
 namespace StargateAPI.Application.Dtos
@@ -12,19 +10,14 @@ namespace StargateAPI.Application.Dtos
         DateOnly CareerStartDate,
         DateOnly? CareerEndDate)
     {
-        /// <summary>"active" or "retired" (rule 6), decided by the server so clients never parse titles.</summary>
-        [JsonConverter(typeof(CamelCaseEnumConverter<CareerStatus>))]
+        /// <summary>Active or retired (rule 6), decided by the server so clients never parse titles.</summary>
         public CareerStatus Status => Retirement.StatusOf(CurrentDutyTitle);
     }
 
-    /// <summary>Directory row: stable ID, display name, version and optional current summary.</summary>
-    public sealed record PersonSummaryDto(
-        Guid Id,
-        string Name,
-        Guid Version,
-        AstronautSummaryDto? Astronaut);
-
-    /// <summary>Single-person view: the summary plus explicitly supplied structured name parts.</summary>
+    /// <summary>
+    /// A person: stable ID, display name, version, optional current summary and the explicitly
+    /// supplied structured name parts. Directory rows and single-person reads share this shape.
+    /// </summary>
     public sealed record PersonDetailDto(
         Guid Id,
         string Name,
@@ -49,8 +42,4 @@ namespace StargateAPI.Application.Dtos
     public sealed record PersonDutiesDto(
         PersonDetailDto Person,
         IReadOnlyList<DutyDto> Duties);
-
-    /// <summary>Serializes an enum as its camelCase name ("retired"), matching the rest of the JSON.</summary>
-    public sealed class CamelCaseEnumConverter<TEnum>() : JsonStringEnumConverter<TEnum>(JsonNamingPolicy.CamelCase)
-        where TEnum : struct, Enum;
 }

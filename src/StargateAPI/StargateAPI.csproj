@@ -9,15 +9,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TypeScriptModuleKind>none</TypeScriptModuleKind>
     <UserSecretsId>2b155f9b-c4a2-477c-882a-152d439544e4</UserSecretsId>
+    <!-- Hot Chocolate's global usings (HotChocolate, GreenDonut) clash with the domain's Result and
+         ErrorCodes; GraphQL files import what they use. -->
+    <HotChocolateImplicitUsings>disable</HotChocolateImplicitUsings>
+    <!-- XML doc comments become the GraphQL schema's descriptions. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.6.9" />
+    <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="16.6.9" />
+    <PackageReference Include="HotChocolate.AspNetCore.CommandLine" Version="16.6.9" />
+    <PackageReference Include="HotChocolate.Types.Analyzers" Version="16.6.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.12">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 
   <ItemGroup>

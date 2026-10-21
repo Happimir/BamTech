@@ -1,33 +1,34 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;
 
-/// <summary>Read routes: name compatibility adapters, ID routes, namesakes and error contracts.</summary>
+/// <summary>Person reads: by-name lookups, ID lookups, namesakes and error contracts.</summary>
 public class PersonReadTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private static async Task<JsonElement> ByNameAsync(TestApi api, string name) =>
+        (await api.GraphQLAsync(Operations.PersonByName, new { name }))["personByName"];
+
+    private static string? TypeName(JsonElement result) => result.GetProperty("__typename").GetString();
 
     [Fact]
-    public async Task Get_duties_by_name_returns_the_duty_history_newest_first()
+    public async Task Duties_by_name_are_the_duty_history_newest_first()
     {
         // Was a starter defect: the endpoint dispatched GetPersonByName.
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
-        (await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).EnsureSuccessStatusCode();
+        await api.AssignDutyByNameAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01");
+        await api.AssignDutyByNameAsync("Grace Hopper", "CPT", "Commander", "2021-03-10");
 
-        var response = await api.Client.GetAsync("/AstronautDuty/Grace%20Hopper", Ct);
+        var person = await ByNameAsync(api, "Grace Hopper");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await Json.ReadAsync(response);
-        var duties = body.GetProperty("duties").EnumerateArray().ToList();
+        Assert.Equal("Person", TypeName(person));
+        var duties = person.GetProperty("duties").EnumerateArray().ToList();
         Assert.Equal(["Commander", "Pilot"], duties.Select(d => d.GetProperty("dutyTitle").GetString()));
         Assert.Equal(JsonValueKind.Null, duties[0].GetProperty("dutyEndDate").ValueKind);
         Assert.Equal("2021-03-09", duties[1].GetProperty("dutyEndDate").GetString());
-        Assert.Equal("Commander", body.GetProperty("person").GetProperty("astronaut").GetProperty("currentDutyTitle").GetString());
+        Assert.Equal("Commander", person.GetProperty("astronaut").GetProperty("currentDutyTitle").GetString());
     }
 
     [Fact]
@@ -37,10 +38,9 @@ public class PersonReadTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Miles O'Brien");
 
-        var response = await api.Client.GetAsync("/Person/Miles%20O'Brien", Ct);
+        var person = await ByNameAsync(api, "Miles O'Brien");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("Miles O'Brien", (await Json.ReadAsync(response)).GetProperty("name").GetString());
+        Assert.Equal("Miles O'Brien", person.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -50,25 +50,23 @@ public class PersonReadTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Alice Example");
 
-        var response = await api.Client.GetAsync("/Person/" + Uri.EscapeDataString("' OR 1=1 OR '"), Ct);
+        var response = await api.GraphQLAsync(Operations.PersonByName, new { name = "' OR 1=1 OR '" });
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.DoesNotContain("Alice Example", await response.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("NotFoundError", TypeName(response["personByName"]));
+        Assert.DoesNotContain("Alice Example", response.Body.GetRawText());
     }
 
     [Fact]
-    public async Task Unknown_person_name_returns_404_problem_details_with_code_and_trace_id()
+    public async Task Unknown_person_name_is_a_not_found_error_with_its_code()
     {
         // Was a starter defect: 200 with a null person.
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.GetAsync("/Person/Nobody%20Here", Ct);
+        var result = await ByNameAsync(api, "Nobody Here");
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        var problem = await Json.ReadAsync(response);
-        Assert.Equal("not_found", problem.GetProperty("code").GetString());
-        Assert.False(string.IsNullOrEmpty(problem.GetProperty("traceId").GetString()));
+        Assert.Equal("NotFoundError", TypeName(result));
+        Assert.Equal("not_found", result.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrEmpty(result.GetProperty("message").GetString()));
     }
 
     [Fact]
@@ -77,26 +75,23 @@ public class PersonReadTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("José Álvarez");
 
-        var matched = await api.Client.GetAsync("/Person/by-name?name=" + Uri.EscapeDataString("  josé álvarez "), Ct);
-        var unaccented = await api.Client.GetAsync("/Person/by-name?name=" + Uri.EscapeDataString("Jose Alvarez"), Ct);
+        var matched = await ByNameAsync(api, "  josé álvarez ");
+        var unaccented = await ByNameAsync(api, "Jose Alvarez");
 
-        Assert.Equal(HttpStatusCode.OK, matched.StatusCode);
-        Assert.Equal("José Álvarez", (await Json.ReadAsync(matched)).GetProperty("name").GetString());
-        Assert.Equal(HttpStatusCode.NotFound, unaccented.StatusCode);
+        Assert.Equal("José Álvarez", matched.GetProperty("name").GetString());
+        Assert.Equal("NotFoundError", TypeName(unaccented));
     }
 
     [Fact]
-    public async Task Query_name_route_handles_names_that_cannot_be_path_segments()
+    public async Task Names_with_slashes_and_wildcards_are_matched_literally()
     {
         await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("by-name");
         await api.SeedPersonAsync("A/B 100% _x_");
+        await api.SeedPersonAsync("A/B 100X Yx_");
 
-        var reserved = await api.Client.GetAsync("/Person/by-name?name=by-name", Ct);
-        var slashed = await api.Client.GetAsync("/Person/by-name?name=" + Uri.EscapeDataString("A/B 100% _x_"), Ct);
+        var person = await ByNameAsync(api, "A/B 100% _x_");
 
-        Assert.Equal("by-name", (await Json.ReadAsync(reserved)).GetProperty("name").GetString());
-        Assert.Equal("A/B 100% _x_", (await Json.ReadAsync(slashed)).GetProperty("name").GetString());
+        Assert.Equal("A/B 100% _x_", person.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -106,16 +101,14 @@ public class PersonReadTests
         var first = await api.SeedPersonAsync("Alex Smith");
         var second = await api.SeedPersonAsync("Alex Smith");
 
-        var byName = await api.Client.GetAsync("/Person/Alex%20Smith", Ct);
-        var dutiesByName = await api.Client.GetAsync("/AstronautDuty/Alex%20Smith", Ct);
-        var firstById = await api.Client.GetAsync($"/api/people/{first}", Ct);
-        var secondDutiesById = await api.Client.GetAsync($"/api/people/{second}/duties", Ct);
+        var byName = await ByNameAsync(api, "Alex Smith");
+        var firstById = (await api.GraphQLAsync(Operations.Person, new { id = first }))["person"];
+        var secondById = (await api.GraphQLAsync(Operations.PersonWithDuties, new { id = second }))["person"];
 
-        Assert.Equal(HttpStatusCode.Conflict, byName.StatusCode);
-        Assert.Equal("ambiguous_name", (await Json.ReadAsync(byName)).GetProperty("code").GetString());
-        Assert.Equal(HttpStatusCode.Conflict, dutiesByName.StatusCode);
-        Assert.Equal(first, (await Json.ReadAsync(firstById)).GetProperty("id").GetGuid());
-        Assert.Equal(second, (await Json.ReadAsync(secondDutiesById)).GetProperty("person").GetProperty("id").GetGuid());
+        Assert.Equal("AmbiguousNameError", TypeName(byName));
+        Assert.Equal("ambiguous_name", byName.GetProperty("code").GetString());
+        Assert.Equal(first, firstById.GetProperty("id").GetGuid());
+        Assert.Equal(second, secondById.GetProperty("id").GetGuid());
     }
 
     [Fact]
@@ -124,71 +117,75 @@ public class PersonReadTests
         await using var api = await TestApi.CreateAsync();
         var id = await api.SeedPersonAsync("Ada Lovelace");
 
-        var response = await api.Client.GetAsync($"/api/people/{id}/duties", Ct);
+        var person = (await api.GraphQLAsync(Operations.PersonWithDuties, new { id }))["person"];
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await Json.ReadAsync(response);
-        Assert.Equal(JsonValueKind.Null, body.GetProperty("person").GetProperty("astronaut").ValueKind);
-        Assert.Equal(0, body.GetProperty("duties").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, person.GetProperty("astronaut").ValueKind);
+        Assert.Equal(0, person.GetProperty("duties").GetArrayLength());
     }
 
     [Fact]
-    public async Task Unknown_or_malformed_ids_return_404()
+    public async Task Person_and_duties_are_read_as_one_snapshot_when_both_are_selected()
+    {
+        await using var api = await TestApi.CreateAsync(configureServices: CommandCounter.Register);
+        var id = await api.SeedPersonAsync("Grace Hopper");
+        await api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01");
+        var counter = CommandCounter.For(api);
+        counter.Reset();
+
+        var byId = (await api.GraphQLAsync(Operations.PersonWithDuties, new { id }))["person"];
+        var byName = await ByNameAsync(api, "Grace Hopper");   // duties inside the result union's Person fragment
+
+        Assert.Equal(1, byId.GetProperty("duties").GetArrayLength());
+        Assert.Equal(1, byName.GetProperty("duties").GetArrayLength());
+        // One statement per read for the person and history: no separate duties query.
+        Assert.Equal(2, counter.Count(sql => sql.Contains("\"AstronautDuty\"")));
+    }
+
+    [Fact]
+    public async Task Unknown_ids_are_null_and_malformed_ids_are_rejected()
     {
         await using var api = await TestApi.CreateAsync();
 
-        var unknown = await api.Client.GetAsync($"/api/people/{Guid.CreateVersion7()}", Ct);
-        var unknownDuties = await api.Client.GetAsync($"/api/people/{Guid.CreateVersion7()}/duties", Ct);
-        var malformed = await api.Client.GetAsync("/api/people/not-a-guid", Ct);
+        var unknown = await api.GraphQLAsync(Operations.Person, new { id = Guid.CreateVersion7() });
+        var malformed = await api.GraphQLAsync(Operations.Person, new { id = "not-a-guid" });
 
-        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, unknownDuties.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, malformed.StatusCode);
+        Assert.False(unknown.HasRequestErrors);
+        Assert.Equal(JsonValueKind.Null, unknown["person"].ValueKind);
+        Assert.True(malformed.HasRequestErrors);
     }
 
     [Fact]
-    public async Task Blank_or_oversized_lookup_names_are_rejected_with_400()
+    public async Task Blank_or_oversized_lookup_names_are_validation_errors()
     {
         await using var api = await TestApi.CreateAsync();
 
-        var blank = await api.Client.GetAsync("/Person/by-name?name=%20%20", Ct);
-        var oversized = await api.Client.GetAsync("/Person/by-name?name=" + new string('a', 301), Ct);
+        var blank = await ByNameAsync(api, "  ");
+        var oversized = await ByNameAsync(api, new string('a', 301));
 
-        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
-        Assert.Equal("validation", (await Json.ReadAsync(blank)).GetProperty("code").GetString());
-        Assert.Equal(HttpStatusCode.BadRequest, oversized.StatusCode);
+        Assert.Equal("ValidationError", TypeName(blank));
+        Assert.Equal("validation", blank.GetProperty("code").GetString());
+        Assert.Equal("ValidationError", TypeName(oversized));
     }
 
     [Fact]
-    public async Task Created_person_gets_a_uuid_v7_identity_and_location()
-    {
-        await using var api = await TestApi.CreateAsync();
-
-        var response = await api.Client.PostAsJsonAsync("/Person", "Ada Lovelace", Ct);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var id = (await Json.ReadAsync(response)).GetProperty("id").GetString()!;
-        Assert.Equal('7', id[14]);                  // RFC 9562 version nibble
-        Assert.Contains(id[19], "89ab");            // RFC 9562 variant bits 10xx
-        Assert.Equal($"/api/people/{id}", response.Headers.Location?.OriginalString);
-    }
-
-    [Fact]
-    public async Task Unknown_json_fields_are_rejected_rather_than_ignored()
+    public async Task Unknown_input_fields_are_rejected_rather_than_ignored()
     {
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
 
-        var response = await api.Client.PostAsJsonAsync("/AstronautDuty", new
+        var response = await api.GraphQLAsync(Operations.AssignDuty, new
         {
-            name = "Grace Hopper",
-            rank = "1LT",
-            dutyTitle = "Pilot",
-            dutyStartDate = "2020-01-01",
-            dutyEndDate = "2020-12-31"
-        }, Ct);
+            input = new
+            {
+                person = new { name = "Grace Hopper" },
+                rank = "1LT",
+                dutyTitle = "Pilot",
+                dutyStartDate = "2020-01-01",
+                dutyEndDate = "2020-12-31"
+            }
+        });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("validation", (await Json.ReadAsync(response)).GetProperty("code").GetString());
+        Assert.True(response.HasRequestErrors);
+        Assert.Equal(0, await api.WithContextAsync(context => context.AstronautDuties.CountAsync()));
     }
 }

@@ -4,8 +4,7 @@ using StargateAPI.Domain;
 namespace StargateAPI.Application.Queries
 {
     /// <summary>
-    /// The directory's name filter, order and row shape, shared by the paged list and the full
-    /// stream so the two can never disagree about who matches or in which order.
+    /// The directory's name filter, deterministic order and row shape, defined once.
     /// </summary>
     internal static class PeopleDirectory
     {
@@ -35,11 +34,11 @@ namespace StargateAPI.Application.Queries
             prefix is null ? people : people.Where(p => p.NormalizedName.StartsWith(prefix));
 
         /// <summary>Directory rows in the deterministic (NormalizedName, Id) order; namesakes tie-break by ID.</summary>
-        public static IQueryable<PersonSummaryDto> InDirectoryOrder(IQueryable<Person> people) =>
+        public static IQueryable<PersonDetailDto> InDirectoryOrder(IQueryable<Person> people) =>
             people
                 .OrderBy(p => p.NormalizedName)
                 .ThenBy(p => p.Id)
-                .Select(p => new PersonSummaryDto(
+                .Select(p => new PersonDetailDto(
                     p.Id,
                     p.Name,
                     p.Version,
@@ -50,6 +49,9 @@ namespace StargateAPI.Application.Queries
                             p.AstronautDetail.CurrentDutyTitle,
                             p.AstronautDetail.CurrentDutyStartDate,
                             p.AstronautDetail.CareerStartDate,
-                            p.AstronautDetail.CareerEndDate)));
+                            p.AstronautDetail.CareerEndDate),
+                    p.FirstName,
+                    p.MiddleName,
+                    p.LastName));
     }
 }

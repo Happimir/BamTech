@@ -21,8 +21,20 @@ namespace StargateAPI.Application.Logging
 
         public Guid? AstronautDutyId { get; set; }
 
+        /// <summary>
+        /// The operation's allowlisted name (for GraphQL, its root fields), set once it is known;
+        /// never raw client text. Null leaves the HTTP boundary to name the request.
+        /// </summary>
+        public string? OperationName { get; set; }
+
         /// <summary>Stable error code of the response, set by whoever produced the error.</summary>
         public string? ErrorCode { get; set; }
+
+        /// <summary>
+        /// A server-side failure inside a response whose HTTP status is still a success (GraphQL
+        /// reports errors in the body). Logged as Failed rather than Rejected.
+        /// </summary>
+        public bool Failed { get; set; }
 
         /// <summary>The unhandled exception, if any. Its message is never persisted.</summary>
         public Exception? Exception { get; set; }

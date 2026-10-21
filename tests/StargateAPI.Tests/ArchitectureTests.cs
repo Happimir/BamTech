@@ -55,21 +55,35 @@ public class ArchitectureTests
     }
 
     [Fact]
-    public void Business_controllers_depend_only_on_use_cases_never_on_infrastructure()
+    public void The_only_controller_is_the_sign_in_plumbing()
     {
-        // AuthController is the ASP.NET sign-in plumbing and legitimately uses Identity types.
-        var businessControllers = Api.GetTypes()
-            .Where(type => typeof(ControllerBase).IsAssignableFrom(type) && !type.IsAbstract && type != typeof(AuthController))
-            .ToArray();
-        Assert.NotEmpty(businessControllers);
+        // The business API is GraphQL; AuthController issues and revokes the session cookie.
+        var controllers = Api.GetTypes()
+            .Where(type => typeof(ControllerBase).IsAssignableFrom(type) && !type.IsAbstract);
 
+        Assert.Equal([typeof(AuthController)], controllers);
+    }
+
+    [Fact]
+    public void GraphQL_resolvers_depend_only_on_use_cases_never_on_infrastructure()
+    {
+        // Resolvers take their services as method parameters; DataLoaders and types as constructor
+        // parameters or fields. None may reach the database other than through MediatR.
+        var graphQLTypes = Api.GetTypes()
+            .Where(type => type.Namespace == typeof(StargateAPI.GraphQL.PeopleQueries).Namespace)
+            .ToArray();
+        Assert.NotEmpty(graphQLTypes);
+
+        const BindingFlags members = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         var offenders =
-            from controller in businessControllers
-            from dependency in controller.GetConstructors().SelectMany(c => c.GetParameters()).Select(p => p.ParameterType)
-                .Concat(controller.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Select(f => f.FieldType))
+            from type in graphQLTypes
+            from dependency in type.GetMethods(members).SelectMany(m => m.GetParameters())
+                .Concat(type.GetConstructors(members).SelectMany(c => c.GetParameters()))
+                .Select(p => p.ParameterType)
+                .Concat(type.GetFields(members).Select(f => f.FieldType))
             where dependency.Assembly == Infrastructure
                 || dependency.Namespace?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true
-            select $"{controller.Name} depends on {dependency.FullName}";
+            select $"{type.Name} depends on {dependency.FullName}";
 
         Assert.Empty(offenders);
     }
