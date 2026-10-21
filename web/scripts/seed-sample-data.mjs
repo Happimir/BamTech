@@ -5,10 +5,8 @@
 //
 // Env: ACTS_API_URL (default https://localhost:7204), ACTS_ADMIN_PASSWORD (default: the
 // Development demo password). Refuses to run twice: it stops if its marker person exists.
-import { request } from '@playwright/test';
+import { connect, ERROR_FIELDS } from './acts-api.mjs';
 
-const API_URL = process.env.ACTS_API_URL ?? 'https://localhost:7204';
-const ADMIN_PASSWORD = process.env.ACTS_ADMIN_PASSWORD ?? 'Admin!2026';
 const MARKER = 'Grace Okonkwo';
 
 /** [name, [[rank, dutyTitle, startDate], ...]] — duties in chronological order. */
@@ -75,40 +73,45 @@ const PEOPLE = [
   ['Victor Petrov', [['Commander', 'Instructor', '2016-12-12']]],
 ];
 
-const api = await request.newContext({ baseURL: API_URL, ignoreHTTPSErrors: true });
+const CREATE_PERSON = `mutation CreatePerson($input: CreatePersonInput!) {
+  createPerson(input: $input) { person { id } ${ERROR_FIELDS} }
+}`;
 
-async function xsrfHeader() {
-  const { cookies } = await api.storageState();
-  const token = cookies.find((c) => c.name === 'XSRF-TOKEN')?.value;
-  if (!token) throw new Error('No XSRF-TOKEN cookie; is the API running?');
-  return { 'X-XSRF-TOKEN': decodeURIComponent(token) };
+const ASSIGN_DUTY = `mutation AssignDuty($input: AssignDutyInput!) {
+  assignDuty(input: $input) { duty { id } ${ERROR_FIELDS} }
+}`;
+
+/** Throws if the payload carries a business error; the sample data must apply cleanly. */
+function payload(data, field) {
+  const [error] = data[field].errors ?? [];
+  if (error) throw new Error(`${field} refused: ${error.code}: ${error.message}`);
+  return data[field];
 }
 
-async function post(url, data) {
-  const response = await api.post(url, { data, headers: await xsrfHeader() });
-  if (!response.ok()) {
-    throw new Error(`POST ${url} -> ${response.status()} ${await response.text()}`);
-  }
-  return response.status() === 204 ? null : response.json();
-}
-
+const api = await connect();
 try {
-  await api.get('/auth/antiforgery');
-  await post('/auth/login', { userName: 'admin', password: ADMIN_PASSWORD });
+  await api.signIn();
 
-  const existing = await (await api.get(`/api/people?name=${encodeURIComponent(MARKER)}`)).json();
-  if (existing.totalCount > 0) {
+  const { data } = await api.graphql(
+    'query Marker($name: String!) { people(name: $name) { totalCount } }',
+    { name: MARKER },
+  );
+  if (data.people.totalCount > 0) {
     console.log(`Sample data already present ("${MARKER}" exists); nothing to do.`);
   } else {
     for (const [name, duties] of PEOPLE) {
-      const person = await post('/api/people', { name });
+      const created = await api.graphql(CREATE_PERSON, { input: { name } });
+      const { person } = payload(created.data, 'createPerson');
       for (const [rank, dutyTitle, dutyStartDate] of duties) {
-        await post(`/api/people/${person.id}/duties`, { rank, dutyTitle, dutyStartDate });
+        const assigned = await api.graphql(ASSIGN_DUTY, {
+          input: { person: { id: person.id }, rank, dutyTitle, dutyStartDate },
+        });
+        payload(assigned.data, 'assignDuty');
       }
     }
     console.log(`Created ${PEOPLE.length} sample people.`);
   }
-  await post('/auth/logout', null);
+  await api.signOut();
 } finally {
   await api.dispose();
 }

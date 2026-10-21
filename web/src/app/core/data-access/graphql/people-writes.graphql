@@ -1,0 +1,42 @@
+mutation CreatePerson($input: CreatePersonInput!) {
+  createPerson(input: $input) {
+    person {
+      ...PersonFields
+    }
+    errors {
+      ...UserErrorFields
+    }
+  }
+}
+
+mutation UpdatePerson($input: UpdatePersonInput!) {
+  updatePerson(input: $input) {
+    person {
+      ...PersonFields
+    }
+    errors {
+      ...UserErrorFields
+    }
+  }
+}
+
+mutation AssignDuty($input: AssignDutyInput!) {
+  assignDuty(input: $input) {
+    duty {
+      ...DutyFields
+    }
+    person {
+      ...PersonFields
+    }
+    errors {
+      ...UserErrorFields
+    }
+  }
+}
+
+query BusinessCalendar {
+  businessCalendar {
+    businessDate
+    businessTimeZone
+  }
+}

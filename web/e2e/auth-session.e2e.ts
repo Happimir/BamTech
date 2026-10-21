@@ -34,11 +34,13 @@ test('sign-in, protected read and sign-out work through the same-origin proxy', 
   // The protected read renders the names it returned (whoever sorts first: other tests and the
   // demo add people). Sign-in itself already proved the XSRF header on a mutating request:
   // without it, login fails with csrf_failed.
-  const read = page.waitForResponse((r) => r.url().includes('/api/people?'));
+  const read = page.waitForResponse(
+    (r) => r.url().endsWith('/graphql') && r.request().postDataJSON()?.operationName === 'People',
+  );
   await page.reload();
   const response = await read;
   expect(response.status()).toBe(200);
-  const firstName: string = (await response.json()).items[0].name;
+  const firstName: string = (await response.json()).data.people.items[0].name;
   await expect(page.getByRole('link', { name: firstName, exact: true }).first()).toBeVisible();
 
   // Sign-out revokes server-side; a replayed copy of the old session cookie is rejected

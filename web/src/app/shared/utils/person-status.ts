@@ -10,5 +10,6 @@ export const RETIRED_DUTY_TITLE = 'RETIRED';
 
 /** No astronaut summary means no assignments (rule 2); otherwise the API's own status. */
 export function personStatus(astronaut: AstronautSummary | null): PersonStatus {
-  return astronaut ? astronaut.status : 'not-assigned';
+  if (!astronaut) return 'not-assigned';
+  return astronaut.status === 'RETIRED' ? 'retired' : 'active';
 }

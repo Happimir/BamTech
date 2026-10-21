@@ -27,17 +27,10 @@ export const routes: Routes = [
       import('./features/status-pages/unavailable-page/unavailable-page').then((m) => m.UnavailablePage),
   },
   {
+    // The directory (/people) and person records (/people/:id), with their GraphQL client.
     path: 'people',
-    title: 'People · ACTS',
     canActivate: canReadPeople,
-    loadComponent: () => import('./features/people/people-page/people-page').then((m) => m.PeoplePage),
-  },
-  {
-    path: 'people/:id',
-    title: 'Person · ACTS',
-    canActivate: canReadPeople,
-    loadComponent: () =>
-      import('./features/person-detail/person-detail-page/person-detail-page').then((m) => m.PersonDetailPage),
+    loadChildren: () => import('./features/people.routes').then((m) => m.peopleRoutes),
   },
   {
     path: 'forbidden',

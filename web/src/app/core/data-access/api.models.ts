@@ -1,8 +1,17 @@
-// Response shapes of the ACTS API (see the repository README). IDs are opaque
-// UUID strings and dates are YYYY-MM-DD calendar-date strings.
+// The app's view of the ACTS API (see the repository README). GraphQL shapes come from the
+// code generated from the API's schema (graphql/generated.ts), named here for the features.
+// IDs are opaque UUID strings and dates are YYYY-MM-DD calendar-date strings.
+
+import type {
+  CareerStatus as ApiCareerStatus,
+  DutyFieldsFragment,
+  PeopleQuery,
+  PersonFieldsFragment,
+} from './graphql/generated';
 
 export type Capability = 'People.Read' | 'People.Write' | 'Duties.Write';
 
+/** GET /auth/me: the signed-in account. The sign-in routes are plain HTTP, not GraphQL. */
 export interface AuthMe {
   id: string;
   userName: string;
@@ -11,47 +20,18 @@ export interface AuthMe {
 }
 
 /** Decided by the API (rule 6); never re-derived from duty titles in the client. */
-export type CareerStatus = 'active' | 'retired';
+export type CareerStatus = ApiCareerStatus;
 
-export interface AstronautSummary {
-  currentRank: string;
-  currentDutyTitle: string;
-  currentDutyStartDate: string;
-  careerStartDate: string;
-  careerEndDate: string | null;
-  status: CareerStatus;
-}
+/** A person as every read returns them: summary plus the supplied name parts. */
+export type PersonDetail = PersonFieldsFragment;
 
-export interface PersonSummary {
-  id: string;
-  name: string;
-  version: string;
-  astronaut: AstronautSummary | null;
-}
+/** The current assignment; null on a person with no assignments. */
+export type AstronautSummary = NonNullable<PersonDetail['astronaut']>;
 
-export interface PagedResponse<T> {
-  items: T[];
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
-}
+export type Duty = DutyFieldsFragment;
 
-export interface PersonDetail extends PersonSummary {
-  firstName: string | null;
-  middleName: string | null;
-  lastName: string | null;
-}
-
-export interface Duty {
-  id: string;
-  rank: string;
-  dutyTitle: string;
-  dutyStartDate: string;
-  dutyEndDate: string | null;
-  /** True for a retirement duty, as decided by the API. */
-  isRetirement: boolean;
-}
+/** One directory page. */
+export type PeoplePage = PeopleQuery['people'];
 
 /** A person and their duty history, newest first, read as one consistent snapshot. */
 export interface PersonDuties {
@@ -65,7 +45,7 @@ export interface BusinessMetadata {
   businessTimeZone: string;
 }
 
-// Request bodies. Name parts are sent as entered, or null; the server never splits names.
+// Write inputs. Name parts are sent as entered, or null; the server never splits names.
 
 export interface PersonNameFields {
   name: string;
@@ -81,10 +61,10 @@ export interface AssignDutyRequest {
   expectedVersion: string;
 }
 
+/** The new duty and the person after the change, including their new version. */
 export interface AssignDutyResult {
-  id: string;
-  personId: string;
-  version: string;
+  duty: Duty;
+  person: PersonDetail;
 }
 
 /** API input limits, kept in step with the server's validation. */

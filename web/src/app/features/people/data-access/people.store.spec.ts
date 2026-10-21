@@ -1,10 +1,11 @@
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { PagedResponse, PersonSummary } from '../../../core/data-access/api.models';
+import { ApolloTestingController, TestOperation } from 'apollo-angular/testing';
+import { PeoplePage } from '../../../core/data-access/api.models';
+import { PeopleDocument } from '../../../core/data-access/graphql/generated';
+import { personFixture, provideApolloTesting } from '../../../core/data-access/graphql/testing';
 import { PeopleStore } from './people.store';
 
 @Component({
@@ -16,18 +17,21 @@ class StoreHost {
   readonly store = inject(PeopleStore);
 }
 
-function page(names: string[], totalCount = names.length, pageNumber = 1): PagedResponse<PersonSummary> {
+function page(names: string[], totalCount = names.length, pageNumber = 1): { people: PeoplePage } {
   return {
-    items: names.map((name, i) => ({ id: `id-${i}`, name, version: 'v', astronaut: null })),
-    page: pageNumber,
-    pageSize: 25,
-    totalCount,
-    totalPages: Math.ceil(totalCount / 25),
+    people: {
+      __typename: 'PersonPage',
+      items: names.map((name, i) => personFixture({ id: `id-${pageNumber}-${i}`, name })),
+      page: pageNumber,
+      pageSize: 25,
+      totalCount,
+      totalPages: Math.ceil(totalCount / 25),
+    } as PeoplePage,
   };
 }
 
 describe('PeopleStore', () => {
-  let http: HttpTestingController;
+  let apollo: ApolloTestingController;
   let harness: RouterTestingHarness;
   let store: InstanceType<typeof PeopleStore>;
 
@@ -44,60 +48,52 @@ describe('PeopleStore', () => {
     await harness.fixture.whenStable();
   }
 
-  /** The single outstanding list request (fails if there are zero or several). */
-  function listRequest(): TestRequest {
+  /** The single outstanding People query (fails if there are zero or several). */
+  function listRequest(): TestOperation {
     TestBed.tick();
-    return http.expectOne((r) => r.url === '/api/people');
+    return apollo.expectOne(PeopleDocument);
   }
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [
-        provideRouter([{ path: 'people', component: StoreHost }]),
-        provideHttpClient(),
-        provideHttpClientTesting(),
-      ],
+      providers: [provideRouter([{ path: 'people', component: StoreHost }]), provideApolloTesting()],
     });
-    http = TestBed.inject(HttpTestingController);
+    apollo = TestBed.inject(ApolloTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => apollo.verify());
 
   it('requests the first page with the default size and no name filter', async () => {
     await open('/people');
     const request = listRequest();
-    expect(request.request.params.keys().sort()).toEqual(['page', 'pageSize']);
-    expect(request.request.params.get('page')).toBe('1');
-    expect(request.request.params.get('pageSize')).toBe('25');
+    expect(request.operation.variables).toEqual({ page: 1, pageSize: 25, name: null });
     expect(store.view()).toBe('loading');
   });
 
   it('applies a search from the first page with exactly one request', async () => {
     await open('/people?page=3');
-    listRequest().flush(page(['Ada'], 80, 3));
+    listRequest().flushData(page(['Ada'], 80, 3));
     await settle();
 
     await store.search('  Ada ');
     expect(TestBed.inject(Router).url).toBe('/people?name=Ada');
-    const request = listRequest();
-    expect(request.request.params.get('name')).toBe('Ada');
-    expect(request.request.params.get('page')).toBe('1');
+    expect(listRequest().operation.variables).toEqual({ page: 1, pageSize: 25, name: 'Ada' });
   });
 
   it('starts from the first page when the page size changes', async () => {
     await open('/people?page=2');
-    listRequest().flush(page(['Ada'], 60, 2));
+    listRequest().flushData(page(['Ada'], 60, 2));
     await settle();
 
     await store.changePage(1, 50);
     expect(TestBed.inject(Router).url).toBe('/people?pageSize=50');
-    listRequest().flush(page(['Ada'], 60));
+    listRequest().flushData(page(['Ada'], 60));
     await settle();
   });
 
   it('keeps the previous rows marked as refreshing until the next page arrives', async () => {
     await open('/people');
-    listRequest().flush(page(['Ada', 'Ben'], 30));
+    listRequest().flushData(page(['Ada', 'Ben'], 30));
     await settle();
     // The page renders the settled rows before the user can page (that read is what is kept).
     expect(store.result()?.items.map((p) => p.name)).toEqual(['Ada', 'Ben']);
@@ -107,35 +103,36 @@ describe('PeopleStore', () => {
     expect(store.isRefreshing()).toBe(true);
     expect(store.result()?.items.map((p) => p.name)).toEqual(['Ada', 'Ben']);
 
-    next.flush(page(['Cy'], 30, 2));
+    next.flushData(page(['Cy'], 30, 2));
     await settle();
     expect(store.isRefreshing()).toBe(false);
     expect(store.result()?.items.map((p) => p.name)).toEqual(['Cy']);
   });
 
-  it('cancels a superseded request so a slow response cannot overwrite newer results', async () => {
+  it('ignores a superseded response so a slow one cannot overwrite newer results', async () => {
     await open('/people');
-    listRequest().flush(page(['Ada'], 30));
+    listRequest().flushData(page(['Ada'], 30));
     await settle();
 
     await store.search('B');
     TestBed.tick();
-    const slow = http.expectOne((r) => r.params.get('name') === 'B');
+    const slow = apollo.expectOne((op) => op.variables['name'] === 'B');
     await store.search('C');
     TestBed.tick();
-    expect(slow.cancelled).toBe(true);
-    http.expectOne((r) => r.params.get('name') === 'C').flush(page(['Cy']));
+    apollo.expectOne((op) => op.variables['name'] === 'C').flushData(page(['Cy']));
+    await settle();
+    slow.flushData(page(['Bea']));
     await settle();
     expect(store.result()?.items.map((p) => p.name)).toEqual(['Cy']);
   });
 
   it('shows an error, not stale rows, when a request fails', async () => {
     await open('/people');
-    listRequest().flush(page(['Ada'], 30));
+    listRequest().flushData(page(['Ada'], 30));
     await settle();
 
     await store.changePage(1, 25);
-    listRequest().flush({ code: 'service_unavailable' }, { status: 503, statusText: 'Unavailable' });
+    listRequest().graphqlErrors([{ message: 'busy', extensions: { code: 'service_unavailable' } }]);
     await settle();
     expect(store.view()).toBe('error');
     expect(store.isUnavailable()).toBe(true);
@@ -144,25 +141,25 @@ describe('PeopleStore', () => {
 
   it('distinguishes an empty directory from a search with no matches', async () => {
     await open('/people');
-    listRequest().flush(page([], 0));
+    listRequest().flushData(page([], 0));
     await settle();
     expect(store.view()).toBe('empty');
 
     await store.search('Zed');
-    listRequest().flush(page([], 0));
+    listRequest().flushData(page([], 0));
     await settle();
     expect(store.view()).toBe('no-matches');
   });
 
   it('reports a page past the end instead of looking empty', async () => {
     await open('/people?page=9');
-    listRequest().flush(page([], 30, 9));
+    listRequest().flushData(page([], 30, 9));
     await settle();
     expect(store.view()).toBe('past-end');
 
     await store.goToLastPage();
     expect(TestBed.inject(Router).url).toBe('/people?page=2');
-    listRequest().flush(page(['Zoe'], 30, 2));
+    listRequest().flushData(page(['Zoe'], 30, 2));
     await settle();
   });
 });

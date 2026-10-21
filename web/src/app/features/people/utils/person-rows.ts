@@ -1,4 +1,4 @@
-import { PersonSummary } from '../../../core/data-access/api.models';
+import { PersonDetail } from '../../../core/data-access/api.models';
 import { formatCalendarDate } from '../../../core/utils/calendar-date';
 import { personStatus, PersonStatus } from '../../../shared/utils/person-status';
 
@@ -23,7 +23,7 @@ export function namesakeHint(id: string): string {
   return id.slice(-8);
 }
 
-export function toPersonRows(people: readonly PersonSummary[]): PersonRow[] {
+export function toPersonRows(people: readonly PersonDetail[]): PersonRow[] {
   const nameCounts = new Map<string, number>();
   for (const person of people) nameCounts.set(person.name, (nameCounts.get(person.name) ?? 0) + 1);
 

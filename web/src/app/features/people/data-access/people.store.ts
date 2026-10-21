@@ -1,12 +1,13 @@
-import { httpResource } from '@angular/common/http';
 import { computed, inject, linkedSignal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { signalStore, withComputed, withMethods, withProps } from '@ngrx/signals';
-import { PagedResponse, PersonSummary } from '../../../core/data-access/api.models';
-import { isUnavailable } from '../../../core/http/http-errors';
+import { Apollo } from 'apollo-angular';
+import { map } from 'rxjs';
+import { PeoplePage } from '../../../core/data-access/api.models';
+import { PeopleDocument } from '../../../core/data-access/graphql/generated';
+import { isUnavailable } from '../../../core/http/api-errors';
 import { parsePeopleQuery, PeopleQuery, toQueryParams } from '../utils/people-query';
-
 export type DirectoryView = 'loading' | 'error' | 'empty' | 'no-matches' | 'past-end' | 'results';
 
 /**
@@ -25,14 +26,23 @@ export const PeopleStore = signalStore(
     };
   }),
   withProps(({ query }) => {
-    const people = httpResource<PagedResponse<PersonSummary>>(() => {
-      const { name, page, pageSize } = query();
-      return { url: '/api/people', params: { page, pageSize, ...(name ? { name } : {}) } };
+    const apollo = inject(Apollo);
+    // The query re-runs whenever the URL's search or paging changes.
+    const people = rxResource({
+      params: () => query(),
+      stream: ({ params: { name, page, pageSize } }) =>
+        apollo
+          .query({
+            query: PeopleDocument,
+            variables: { page, pageSize, name: name || null },
+            fetchPolicy: 'network-only',
+          })
+          .pipe(map((result) => result.data!.people)),
     });
     // The last settled page stays on screen (marked stale) while the next one loads. linkedSignal
     // is lazy: "previous" is the value last read, which is the page the template rendered. If it
     // was never rendered, the fallback is a skeleton, never another query's rows.
-    const lastResult = linkedSignal<PagedResponse<PersonSummary> | undefined, PagedResponse<PersonSummary> | undefined>({
+    const lastResult = linkedSignal<PeoplePage | undefined, PeoplePage | undefined>({
       source: () => (people.hasValue() ? people.value() : undefined),
       computation: (next, previous) => next ?? (people.error() ? undefined : previous?.value),
     });

@@ -79,17 +79,24 @@ test('a change made elsewhere stops a stale save until the admin reloads and sav
   await addDuty(page, { rank: 'Ensign', title: 'Pilot', start: '3/1/2020' });
 
   // Someone else renames the person while the dialog is open (a new version).
-  const status = await page.evaluate(async ({ id, name }) => {
-    const current = await (await fetch(`/api/people/${id}`)).json();
+  const errors = await page.evaluate(async ({ id, name }) => {
     const token = decodeURIComponent(document.cookie.split('; ').find((c) => c.startsWith('XSRF-TOKEN='))!.slice(11));
-    const response = await fetch(`/api/people/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': token },
-      body: JSON.stringify({ name: `${name} Elsewhere`, version: current.version }),
-    });
-    return response.status;
+    const graphql = async (query: string, variables: object) =>
+      (
+        await fetch('/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': token },
+          body: JSON.stringify({ query, variables }),
+        })
+      ).json();
+    const current = await graphql('query ($id: UUID!) { person(id: $id) { version } }', { id });
+    const renamed = await graphql(
+      'mutation ($input: UpdatePersonInput!) { updatePerson(input: $input) { errors { __typename } } }',
+      { input: { id, name: `${name} Elsewhere`, version: current.data.person.version } },
+    );
+    return renamed.errors ?? renamed.data.updatePerson.errors;
   }, { id, name });
-  expect(status).toBe(200);
+  expect(errors).toBeNull();
 
   await dialog(page).getByRole('button', { name: 'Add duty' }).click();
   await expect(dialog(page).getByRole('alert')).toContainText('Someone else changed this person');

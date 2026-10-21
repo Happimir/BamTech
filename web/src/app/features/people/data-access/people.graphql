@@ -1,0 +1,12 @@
+# One directory page. The URL's page, pageSize and name are the variables.
+query People($page: Int!, $pageSize: Int!, $name: String) {
+  people(page: $page, pageSize: $pageSize, name: $name) {
+    page
+    pageSize
+    totalCount
+    totalPages
+    items {
+      ...PersonFields
+    }
+  }
+}
