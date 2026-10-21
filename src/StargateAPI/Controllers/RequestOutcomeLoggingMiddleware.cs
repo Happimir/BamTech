@@ -43,6 +43,9 @@ namespace StargateAPI.Controllers
             }
 
             operation.TraceId = Activity.Current?.Id ?? httpContext.TraceIdentifier;
+            // W3C Trace Context's response header: the trace ID that finds this request's log rows,
+            // also for a GraphQL refusal returned as data (a 200 with no ProblemDetails body).
+            httpContext.Response.Headers["traceresponse"] = operation.TraceId;
             // Captured now: exception handling clears the endpoint before re-executing.
             var operationName = OperationName(httpContext);
             var started = _timeProvider.GetTimestamp();

@@ -55,6 +55,8 @@ public class ProcessLoggingTests
         var logs = await api.ProcessLogsAsync(expectedOutcomes: 2);
         var rejected = Assert.Single(logs, l => l.Outcome == ProcessLogOutcome.Rejected);
         Assert.Equal(("chronology_conflict", id), (rejected.ErrorCode, rejected.PersonId!.Value));
+        // The client can quote the trace ID of a refusal that has no error body.
+        Assert.Equal(rejected.TraceId, Assert.Single(response.Http.Headers.GetValues("traceresponse")));
         Assert.Single(logs, l => l.Phase == ProcessLogPhase.MutationAudit);   // only the first, successful duty
         Assert.DoesNotContain(logs, l => l.Phase == ProcessLogPhase.MutationAudit && l.OperationId == rejected.OperationId);
     }

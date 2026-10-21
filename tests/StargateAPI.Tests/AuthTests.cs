@@ -87,6 +87,25 @@ public class AuthTests
         }
     }
 
+    [Fact]
+    public async Task A_browser_opening_a_protected_url_signed_out_gets_401_not_a_server_error()
+    {
+        await using var api = await TestApi.CreateAsync(user: TestUser.Anonymous);
+
+        async Task<HttpResponseMessage> OpenAsync(string path)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Accept.ParseAdd("text/html");
+            return await api.Client.SendAsync(request, Ct);
+        }
+
+        // No ProblemDetails writer accepts text/html; the status alone still says what happened.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await OpenAsync("/graphql")).StatusCode);   // the Development IDE's URL
+        Assert.Equal(HttpStatusCode.Unauthorized, (await OpenAsync("/auth/me")).StatusCode);
+        var outcome = Assert.Single(await api.ProcessLogsAsync(expectedOutcomes: 1));
+        Assert.Equal((ProcessLogOutcome.Rejected, "unauthenticated", "Auth.Me"), (outcome.Outcome, outcome.ErrorCode, outcome.Operation));
+    }
+
     public static TheoryData<string, string> WriteOperations => new()
     {
         { Operations.CreatePerson, """{"input":{"name":"New Person"}}""" },
