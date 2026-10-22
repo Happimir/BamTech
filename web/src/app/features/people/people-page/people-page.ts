@@ -1,5 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, linkedSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, linkedSignal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { form, FormField, FormRoot, maxLength } from '@angular/forms/signals';
 import { MatButtonModule } from '@angular/material/button';
@@ -120,6 +120,8 @@ export class PeoplePage {
 
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  // The dialog resolves its services (the GraphQL client) from this route, not from the root.
+  private readonly injector = inject(Injector);
   private openDialog: MatDialogRef<unknown> | undefined;
 
   constructor() {
@@ -131,6 +133,7 @@ export class PeoplePage {
     const ref = this.dialog.open<PersonDialog, PersonDialogMode, PersonDialogResult>(PersonDialog, {
       ...ADMIN_DIALOG_CONFIG,
       data: 'create',
+      injector: this.injector,
     });
     this.openDialog = ref;
     ref.afterClosed().subscribe((result) => {

@@ -1,8 +1,8 @@
-import { PersonSummary } from '../../../core/data-access/api.models';
+import { PersonDetail } from '../../../core/data-access/api.models';
 import { toPersonRows } from './person-rows';
 
-function person(id: string, name: string, astronaut: PersonSummary['astronaut'] = null): PersonSummary {
-  return { id, name, version: 'v', astronaut };
+function person(id: string, name: string, astronaut: PersonDetail['astronaut'] = null): PersonDetail {
+  return { id, name, version: 'v', firstName: null, middleName: null, lastName: null, astronaut };
 }
 
 describe('toPersonRows', () => {
@@ -28,7 +28,7 @@ describe('toPersonRows', () => {
         currentDutyStartDate: '2019-11-30',
         careerStartDate: '2008-05-19',
         careerEndDate: '2019-11-29',
-        status: 'retired',
+        status: 'RETIRED',
       }),
       person('b', 'A', {
         currentRank: 'Captain',
@@ -36,7 +36,7 @@ describe('toPersonRows', () => {
         currentDutyStartDate: '2024-02-12',
         careerStartDate: '2010-01-04',
         careerEndDate: null,
-        status: 'active',
+        status: 'ACTIVE',
       }),
       person('c', 'U'),
       // The API decides retirement (rule 6); the client never inspects the title for it.
@@ -46,7 +46,7 @@ describe('toPersonRows', () => {
         currentDutyStartDate: '2019-11-30',
         careerStartDate: '2008-05-19',
         careerEndDate: '2019-11-29',
-        status: 'retired',
+        status: 'RETIRED',
       }),
     ]);
 

@@ -1,21 +1,17 @@
-using System.Net;
-using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;
 
 /// <summary>
-/// Duty appends through HTTP and the real database: status/error mapping, persistence of the
-/// whole transition, no partial writes on rejection, and serialization of concurrent writers.
+/// Duty appends through GraphQL and the real database: typed errors, persistence of the whole
+/// transition, no partial writes on rejection, and serialization of concurrent writers.
 /// The transition rules themselves are covered by the domain tests.
 /// </summary>
 public class DutyAssignmentApiTests
 {
-    private static CancellationToken Ct => TestContext.Current.CancellationToken;
-
-    private static async Task<string?> CodeAsync(HttpResponseMessage response) =>
-        (await Json.ReadAsync(response)).GetProperty("code").GetString();
+    private const string Field = "assignDuty";
 
     private static Task<int> DutyCountAsync(TestApi api) =>
         api.WithContextAsync(context => context.AstronautDuties.CountAsync());
@@ -23,15 +19,16 @@ public class DutyAssignmentApiTests
     // --- Former starter defects (were KnownDefectRegressionTests) ---
 
     [Fact]
-    public async Task Duty_for_a_missing_person_returns_404()
+    public async Task Duty_for_a_missing_person_is_a_not_found_error()
     {
         await using var api = await TestApi.CreateAsync();
 
-        var byName = await api.PostDutyAsync("Nobody Here", "1LT", "Pilot", "2020-01-01");
-        var byId = await api.PostDutyByIdAsync(Guid.CreateVersion7(), "1LT", "Pilot", "2020-01-01");
+        var byName = await api.AssignDutyByNameAsync("Nobody Here", "1LT", "Pilot", "2020-01-01");
+        var byId = await api.AssignDutyAsync(Guid.CreateVersion7(), "1LT", "Pilot", "2020-01-01");
 
-        Assert.Equal(HttpStatusCode.NotFound, byName.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, byId.StatusCode);
+        Assert.Equal("NotFoundError", byName.PayloadErrorType(Field));
+        Assert.Equal("NotFoundError", byId.PayloadErrorType(Field));
+        Assert.Equal("not_found", byId.PayloadErrorCode(Field));
     }
 
     [Fact]
@@ -40,40 +37,56 @@ public class DutyAssignmentApiTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
         await api.SeedPersonAsync("Sally Ride");
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).Succeeded(Field));
 
-        var response = await api.PostDutyAsync("Sally Ride", "1LT", "Pilot", "2020-01-01");
+        var response = await api.AssignDutyByNameAsync("Sally Ride", "1LT", "Pilot", "2020-01-01");
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.True(response.Succeeded(Field));
     }
 
     [Fact]
-    public async Task First_duty_retirement_is_409_and_writes_nothing()
+    public async Task First_duty_retirement_is_refused_and_writes_nothing()
     {
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Sally Ride");
 
-        var response = await api.PostDutyAsync("Sally Ride", "1LT", "RETIRED", "2020-01-01");
+        var response = await api.AssignDutyByNameAsync("Sally Ride", "1LT", "RETIRED", "2020-01-01");
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("first_duty_retirement", await CodeAsync(response));
+        Assert.Equal("FirstDutyRetirementError", response.PayloadErrorType(Field));
+        Assert.Equal("first_duty_retirement", response.PayloadErrorCode(Field));
+        Assert.Equal(JsonValueKind.Null, response[Field].GetProperty("duty").ValueKind);
         Assert.Equal(0, await api.WithContextAsync(context => context.AstronautDetails.CountAsync()));
         Assert.Equal(0, await DutyCountAsync(api));
+    }
+
+    [Fact]
+    public async Task Retiring_a_retired_person_is_refused()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var id = await api.SeedPersonAsync("Sally Ride");
+        await api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01");
+        Assert.True((await api.AssignDutyAsync(id, "1LT", "RETIRED", "2024-01-01")).Succeeded(Field));
+
+        var response = await api.AssignDutyAsync(id, "1LT", "retired", "2025-01-01");
+
+        Assert.Equal("AlreadyRetiredError", response.PayloadErrorType(Field));
+        Assert.Equal("already_retired", response.PayloadErrorCode(Field));
+        Assert.Equal(2, await DutyCountAsync(api));
     }
 
     [Theory]
     [InlineData("2019-06-01")]   // earlier: the starter inverted history
     [InlineData("2020-01-01")]   // exact repeat: no replay recognition in this version
-    public async Task Same_or_earlier_start_is_409_and_history_is_unchanged(string start)
+    public async Task Same_or_earlier_start_is_a_chronology_conflict_and_history_is_unchanged(string start)
     {
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).Succeeded(Field));
 
-        var response = await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", start);
+        var response = await api.AssignDutyByNameAsync("Grace Hopper", "CPT", "Commander", start);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("chronology_conflict", await CodeAsync(response));
+        Assert.Equal("ChronologyConflictError", response.PayloadErrorType(Field));
+        Assert.Equal("chronology_conflict", response.PayloadErrorCode(Field));
         var duty = Assert.Single(await api.WithContextAsync(context => context.AstronautDuties.ToListAsync()));
         Assert.Null(duty.DutyEndDate);
     }
@@ -81,25 +94,24 @@ public class DutyAssignmentApiTests
     // --- Contract and persistence ---
 
     [Fact]
-    public async Task Created_duty_location_resolves_and_rejects_another_persons_id()
+    public async Task Payload_returns_the_new_duty_and_the_person_with_their_new_version()
     {
         await using var api = await TestApi.CreateAsync();
         var grace = await api.SeedPersonAsync("Grace Hopper");
-        var sally = await api.SeedPersonAsync("Sally Ride");
+        var before = await api.VersionAsync(grace);
 
-        var created = await api.PostDutyByIdAsync(grace, "1LT", "Pilot", "2020-01-01");
+        var response = await api.AssignDutyAsync(grace, "1LT", "Pilot", "2020-01-01");
 
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var body = await Json.ReadAsync(created);
-        var dutyId = body.GetProperty("id").GetGuid();
-        Assert.Equal(grace, body.GetProperty("personId").GetGuid());
-        Assert.Equal($"/api/people/{grace}/duties/{dutyId}", created.Headers.Location?.OriginalString);
-
-        var followed = await api.Client.GetAsync(created.Headers.Location, Ct);
-        var mismatched = await api.Client.GetAsync($"/api/people/{sally}/duties/{dutyId}", Ct);
-
-        Assert.Equal("Pilot", (await Json.ReadAsync(followed)).GetProperty("dutyTitle").GetString());
-        Assert.Equal(HttpStatusCode.NotFound, mismatched.StatusCode);
+        Assert.True(response.Succeeded(Field));
+        var duty = response[Field].GetProperty("duty");
+        var person = response[Field].GetProperty("person");
+        Assert.Equal("Pilot", duty.GetProperty("dutyTitle").GetString());
+        Assert.Equal(JsonValueKind.Null, duty.GetProperty("dutyEndDate").ValueKind);
+        Assert.Equal(grace, person.GetProperty("id").GetGuid());
+        Assert.Equal("Pilot", person.GetProperty("astronaut").GetProperty("currentDutyTitle").GetString());
+        Assert.NotEqual(before, person.GetProperty("version").GetGuid());
+        var stored = await api.WithContextAsync(context => context.AstronautDuties.SingleAsync());
+        Assert.Equal((stored.Id, grace), (duty.GetProperty("id").GetGuid(), stored.PersonId));
     }
 
     [Fact]
@@ -115,16 +127,16 @@ public class DutyAssignmentApiTests
             ("MAJ", "Commander", "2026-01-01")
         })
         {
-            Assert.Equal(HttpStatusCode.Created, (await api.PostDutyByIdAsync(id, rank, title, start)).StatusCode);
+            Assert.True((await api.AssignDutyAsync(id, rank, title, start)).Succeeded(Field));
         }
 
-        var body = await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}/duties", Ct));
-        var astronaut = body.GetProperty("person").GetProperty("astronaut");
+        var person = (await api.GraphQLAsync(Operations.PersonWithDuties, new { id }))["person"];
+        var astronaut = person.GetProperty("astronaut");
         Assert.Equal("Commander", astronaut.GetProperty("currentDutyTitle").GetString());
         Assert.Equal("2026-01-01", astronaut.GetProperty("currentDutyStartDate").GetString());
         Assert.Equal("2020-01-01", astronaut.GetProperty("careerStartDate").GetString());
-        Assert.Equal(System.Text.Json.JsonValueKind.Null, astronaut.GetProperty("careerEndDate").ValueKind);
-        var history = body.GetProperty("duties").EnumerateArray()
+        Assert.Equal(JsonValueKind.Null, astronaut.GetProperty("careerEndDate").ValueKind);
+        var history = person.GetProperty("duties").EnumerateArray()
             .Select(d => $"{d.GetProperty("dutyTitle").GetString()} {d.GetProperty("dutyStartDate").GetString()}..{d.GetProperty("dutyEndDate")}")
             .ToList();
         Assert.Equal(
@@ -144,120 +156,115 @@ public class DutyAssignmentApiTests
         async Task<string?> StatusAsync()
         {
             // Every read that carries the summary reports the same status.
-            var person = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}", Ct))).GetProperty("astronaut");
-            var row = (await Json.ReadAsync(await api.Client.GetAsync("/api/people?name=sally", Ct)))
+            var person = (await api.GraphQLAsync(Operations.Person, new { id }))["person"].GetProperty("astronaut");
+            var row = (await api.GraphQLAsync(Operations.People, new { name = "sally" }))["people"]
                 .GetProperty("items")[0].GetProperty("astronaut");
-            var streamed = (await Json.ReadAsync(await api.Client.GetAsync("/Person?name=sally", Ct)))[0].GetProperty("astronaut");
-            if (person.ValueKind == System.Text.Json.JsonValueKind.Null)
+            var byName = (await api.GraphQLAsync(Operations.PersonByName, new { name = "sally ride" }))["personByName"]
+                .GetProperty("astronaut");
+            if (person.ValueKind == JsonValueKind.Null)
             {
-                Assert.Equal(System.Text.Json.JsonValueKind.Null, row.ValueKind);
+                Assert.Equal(JsonValueKind.Null, row.ValueKind);
+                Assert.Equal(JsonValueKind.Null, byName.ValueKind);
                 return null;
             }
             var status = person.GetProperty("status").GetString();
             Assert.Equal(status, row.GetProperty("status").GetString());
-            Assert.Equal(status, streamed.GetProperty("status").GetString());
+            Assert.Equal(status, byName.GetProperty("status").GetString());
             return status;
         }
 
         var before = await StatusAsync();
-        await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01");
+        await api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01");
         var serving = await StatusAsync();
-        await api.PostDutyByIdAsync(id, "CPT", " retired ", "2025-01-01");
+        await api.AssignDutyAsync(id, "CPT", " retired ", "2025-01-01");
         var retired = await StatusAsync();
-        await api.PostDutyByIdAsync(id, "MAJ", "Commander", "2026-01-01");
+        await api.AssignDutyAsync(id, "MAJ", "Commander", "2026-01-01");
         var reactivated = await StatusAsync();
 
-        Assert.Equal([null, "active", "retired", "active"], new[] { before, serving, retired, reactivated });
-        var duties = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}/duties", Ct))).GetProperty("duties");
+        Assert.Equal([null, "ACTIVE", "RETIRED", "ACTIVE"], new[] { before, serving, retired, reactivated });
+        var duties = (await api.GraphQLAsync(Operations.PersonWithDuties, new { id }))["person"].GetProperty("duties");
         Assert.Equal([false, true, false], duties.EnumerateArray().Select(d => d.GetProperty("isRetirement").GetBoolean()));
     }
 
     [Fact]
-    public async Task Stale_expected_version_is_409_and_the_returned_version_allows_the_next_write()
+    public async Task Stale_expected_version_is_a_conflict_and_the_returned_version_allows_the_next_write()
     {
         await using var api = await TestApi.CreateAsync();
         var id = await api.SeedPersonAsync("Grace Hopper");
-        var original = (await Json.ReadAsync(await api.Client.GetAsync($"/api/people/{id}", Ct))).GetProperty("version").GetGuid();
+        var original = await api.VersionAsync(id);
 
-        var first = await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01", original);
-        var newVersion = (await Json.ReadAsync(first)).GetProperty("version").GetGuid();
-        var stale = await api.PostDutyByIdAsync(id, "CPT", "Commander", "2021-01-01", original);
-        var current = await api.PostDutyByIdAsync(id, "CPT", "Commander", "2021-01-01", newVersion);
+        var first = await api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01", original);
+        var newVersion = first[Field].GetProperty("person").GetProperty("version").GetGuid();
+        var stale = await api.AssignDutyAsync(id, "CPT", "Commander", "2021-01-01", original);
+        var current = await api.AssignDutyAsync(id, "CPT", "Commander", "2021-01-01", newVersion);
 
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.True(first.Succeeded(Field));
         Assert.NotEqual(original, newVersion);
-        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Equal("concurrency_conflict", await CodeAsync(stale));
-        Assert.Equal(HttpStatusCode.Created, current.StatusCode);
+        Assert.Equal("ConcurrencyConflictError", stale.PayloadErrorType(Field));
+        Assert.Equal("concurrency_conflict", stale.PayloadErrorCode(Field));
+        Assert.True(current.Succeeded(Field));
         Assert.Equal(2, await DutyCountAsync(api));
     }
 
     [Fact]
-    public async Task Legacy_route_rejects_an_ambiguous_name_before_writing()
+    public async Task By_name_assignment_refuses_an_ambiguous_name_before_writing()
     {
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Alex Smith");
         await api.SeedPersonAsync("Alex Smith");
 
-        var response = await api.PostDutyAsync("Alex Smith", "1LT", "Pilot", "2020-01-01");
+        var response = await api.AssignDutyByNameAsync("Alex Smith", "1LT", "Pilot", "2020-01-01");
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("ambiguous_name", await CodeAsync(response));
+        Assert.Equal("AmbiguousNameError", response.PayloadErrorType(Field));
+        Assert.Equal("ambiguous_name", response.PayloadErrorCode(Field));
         Assert.Equal(0, await DutyCountAsync(api));
     }
 
     [Fact]
-    public async Task Invalid_input_is_400_with_field_errors_and_writes_nothing()
+    public async Task Invalid_input_is_a_validation_error_with_field_names_and_writes_nothing()
     {
         await using var api = await TestApi.CreateAsync();
         var id = await api.SeedPersonAsync("Grace Hopper");
 
-        var missing = await api.PostDutyByIdAsync(id, " ", "Pilot", null!);
-        var future = await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2999-01-01");
-        var malformed = await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-13-45");
+        var blank = await api.AssignDutyAsync(id, " ", " ", "2020-01-01");
+        var future = await api.AssignDutyAsync(id, "1LT", "Pilot", "2999-01-01");
 
-        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
-        var errors = (await Json.ReadAsync(missing)).GetProperty("errors");
-        Assert.True(errors.TryGetProperty("rank", out _));
-        Assert.True(errors.TryGetProperty("dutyStartDate", out _));
-        Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        Assert.Equal("ValidationError", blank.PayloadErrorType(Field));
+        Assert.Equal(["dutyTitle", "rank"], blank.InvalidFields(Field).Order());
+        Assert.Equal(["dutyStartDate"], future.InvalidFields(Field));
         Assert.Equal(0, await DutyCountAsync(api));
     }
 
     [Theory]
-    [InlineData("2024-03-10")]
-    [InlineData("2024-03-10T00:00:00")]          // the starter contract's DateTime form
-    [InlineData("2024-03-10T00:00:00Z")]
-    [InlineData("2024-03-10T23:30:00-05:00")]    // converting to UTC would give March 11
-    [InlineData("2024-03-10T00:30:00+14:00")]    // converting to UTC would give March 9
-    public async Task Legacy_route_accepts_the_starter_date_time_form_and_keeps_the_date_as_written(string sent)
-    {
-        await using var api = await TestApi.CreateAsync();
-        await api.SeedPersonAsync("Grace Hopper");
-
-        var response = await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", sent);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var start = await api.WithContextAsync(context => context.AstronautDuties.Select(d => d.DutyStartDate).SingleAsync());
-        Assert.Equal(new DateOnly(2024, 3, 10), start);
-    }
-
-    [Fact]
-    public async Task Only_the_legacy_route_accepts_date_times_and_neither_accepts_other_formats()
+    [InlineData(null)]                         // required by the schema
+    [InlineData("2020-13-45")]                 // not a date
+    [InlineData("2024-03-10T00:00:00")]        // the starter's date-time form: dates are calendar dates
+    [InlineData("03/10/2024")]
+    public async Task Start_date_must_be_a_calendar_date_or_the_request_is_rejected_before_it_runs(string? sent)
     {
         await using var api = await TestApi.CreateAsync();
         var id = await api.SeedPersonAsync("Grace Hopper");
 
-        var byIdDateTime = await api.PostDutyByIdAsync(id, "1LT", "Pilot", "2024-03-10T00:00:00");
-        var legacyLocalFormat = await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "03/10/2024");
-        var legacyNumber = await api.Client.PostAsJsonAsync("/AstronautDuty",
-            new { name = "Grace Hopper", rank = "1LT", dutyTitle = "Pilot", dutyStartDate = 20240310 }, Ct);
+        var response = await api.AssignDutyAsync(id, "1LT", "Pilot", sent);
 
-        Assert.Equal(HttpStatusCode.BadRequest, byIdDateTime.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, legacyLocalFormat.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, legacyNumber.StatusCode);
-        Assert.Equal("validation", await CodeAsync(legacyNumber));
+        Assert.True(response.HasRequestErrors);
+        Assert.False(response.Body.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+            && data.TryGetProperty(Field, out var payload) && payload.ValueKind == JsonValueKind.Object);
+        Assert.Equal(0, await DutyCountAsync(api));
+    }
+
+    [Fact]
+    public async Task Person_selector_takes_exactly_one_of_id_or_name()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var id = await api.SeedPersonAsync("Grace Hopper");
+
+        var both = await api.GraphQLAsync(Operations.AssignDuty, new
+        {
+            input = new { person = new { id, name = "Grace Hopper" }, rank = "1LT", dutyTitle = "Pilot", dutyStartDate = "2020-01-01" }
+        });
+
+        Assert.True(both.HasRequestErrors);
         Assert.Equal(0, await DutyCountAsync(api));
     }
 
@@ -270,11 +277,11 @@ public class DutyAssignmentApiTests
         var id = await api.SeedPersonAsync("Grace Hopper");
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 8)
-            .Select(_ => api.PostDutyByIdAsync(id, "1LT", "Pilot", "2020-01-01")));
+            .Select(_ => api.AssignDutyAsync(id, "1LT", "Pilot", "2020-01-01")));
 
-        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
-        Assert.All(responses.Where(r => r.StatusCode != HttpStatusCode.Created),
-            r => Assert.Equal(HttpStatusCode.Conflict, r.StatusCode));
+        Assert.Single(responses, r => r.Succeeded(Field));
+        Assert.All(responses.Where(r => !r.Succeeded(Field)),
+            r => Assert.Equal("ChronologyConflictError", r.PayloadErrorType(Field)));
         Assert.Equal(1, await DutyCountAsync(api));
     }
 
@@ -285,14 +292,16 @@ public class DutyAssignmentApiTests
         var id = await api.SeedPersonAsync("Grace Hopper");
         var starts = new[] { 5, 2, 8, 1, 7, 3, 6, 4 }.Select(day => $"2020-01-0{day}").ToArray();
 
-        var responses = await Task.WhenAll(starts.Select(start => api.PostDutyByIdAsync(id, "1LT", $"Duty {start}", start)));
+        var responses = await Task.WhenAll(starts.Select(start => api.AssignDutyAsync(id, "1LT", $"Duty {start}", start)));
 
-        // Whatever the interleaving: only successes and chronology conflicts, never a 500 or a lost update.
-        Assert.All(responses, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.Conflict }));
+        // Whatever the interleaving: only successes and chronology conflicts, never a fault or a lost update.
+        Assert.All(responses, r => Assert.False(r.HasRequestErrors));
+        Assert.All(responses.Where(r => !r.Succeeded(Field)),
+            r => Assert.Equal("ChronologyConflictError", r.PayloadErrorType(Field)));
         var (duties, detail) = await api.WithContextAsync(async context => (
             await context.AstronautDuties.OrderBy(d => d.DutyStartDate).ToListAsync(),
             await context.AstronautDetails.SingleAsync()));
-        Assert.Equal(responses.Count(r => r.StatusCode == HttpStatusCode.Created), duties.Count);
+        Assert.Equal(responses.Count(r => r.Succeeded(Field)), duties.Count);
         Assert.Single(duties, d => d.DutyEndDate is null);
         Assert.Equal(duties[^1].DutyStartDate, detail.CurrentDutyStartDate);
         for (var i = 0; i < duties.Count - 1; i++)

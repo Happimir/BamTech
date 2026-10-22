@@ -1,0 +1,44 @@
+# Shared selections. Generated types are named after them (PersonFieldsFragment, ...).
+
+fragment AstronautSummaryFields on AstronautSummary {
+  currentRank
+  currentDutyTitle
+  currentDutyStartDate
+  careerStartDate
+  careerEndDate
+  status
+}
+
+fragment PersonFields on Person {
+  id
+  name
+  version
+  firstName
+  middleName
+  lastName
+  astronaut {
+    ...AstronautSummaryFields
+  }
+}
+
+fragment DutyFields on Duty {
+  id
+  rank
+  dutyTitle
+  dutyStartDate
+  dutyEndDate
+  isRetirement
+}
+
+# A business error returned as data in a mutation payload.
+fragment UserErrorFields on Error {
+  __typename
+  code
+  message
+  ... on ValidationError {
+    fields {
+      field
+      messages
+    }
+  }
+}

@@ -1,22 +1,22 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using HotChocolate.Language;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using StargateAPI.Domain;
 using StargateAPI.Application.Logging;
 using StargateAPI.Infrastructure.Identity;
-using StargateAPI.Infrastructure.Persistence;
 using StargateAPI.Security;
 using StargateAPI.Tests.Infrastructure;
 
 namespace StargateAPI.Tests;
 
 /// <summary>
-/// Sign-in, revocable sessions, CSRF and role policies on every route family.
+/// Sign-in, revocable sessions, CSRF, and role policies on every GraphQL field.
 /// </summary>
 public class AuthTests
 {
@@ -25,30 +25,48 @@ public class AuthTests
     private static async Task<string?> CodeAsync(HttpResponseMessage response) =>
         (await Json.ReadAsync(response)).GetProperty("code").GetString();
 
-    // --- Route protection ---
+    // --- Route and field protection ---
 
     [Fact]
-    public async Task Every_route_declares_its_access_and_only_sign_in_routes_are_anonymous()
+    public async Task Only_the_sign_in_routes_are_anonymous()
     {
         await using var api = await TestApi.CreateAsync(user: TestUser.Anonymous);
-        var actions = api.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .Select(e => (Endpoint: e, Action: e.Metadata.GetMetadata<ControllerActionDescriptor>()))
-            .Where(x => x.Action is not null)
-            .ToList();
+        var endpoints = api.Services.GetRequiredService<EndpointDataSource>().Endpoints;
 
-        var anonymous = actions.Where(x => x.Endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
-            .Select(x => $"{x.Action!.ControllerName}.{x.Action.ActionName}").Order().ToList();
+        var anonymous = endpoints
+            .Where(e => e.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+            .Select(e => e.Metadata.GetMetadata<ControllerActionDescriptor>() is { } action
+                ? $"{action.ControllerName}.{action.ActionName}"
+                : e.DisplayName)
+            .Order().ToList();
+
+        // The GraphQL endpoint falls under the signed-in-by-default policy; its fields add role policies.
         Assert.Equal(["Auth.Antiforgery", "Auth.Login", "Auth.Logout"], anonymous);
+    }
 
-        foreach (var (endpoint, action) in actions.Where(x => x.Endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null))
+    [Fact]
+    public async Task Every_root_field_declares_a_policy_and_every_mutation_a_write_policy()
+    {
+        var schema = Utf8GraphQLParser.Parse(await SchemaTests.CurrentSchemaAsync());
+        var roots = schema.Definitions.OfType<ObjectTypeDefinitionNode>()
+            .Where(type => type.Name.Value is "Query" or "Mutation")
+            .ToList();
+        Assert.Equal(2, roots.Count);
+
+        foreach (var root in roots)
         {
-            var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(a => a.Policy).ToList();
-            Assert.True(policies.Count > 0, $"{action!.DisplayName} has no [Authorize].");
-            var isWrite = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Any(m => m != "GET");
-            if (isWrite)
+            foreach (var field in root.Fields)
             {
-                Assert.True(policies.Contains(Policies.PeopleWrite) || policies.Contains(Policies.DutiesWrite),
-                    $"{action!.DisplayName} writes without a write policy.");
+                var policies = field.Directives.Where(d => d.Name.Value == "authorize")
+                    .SelectMany(d => d.Arguments.Where(a => a.Name.Value == "policy"))
+                    .Select(a => ((StringValueNode)a.Value).Value)
+                    .ToList();
+                Assert.True(policies.Count > 0, $"{root.Name.Value}.{field.Name.Value} has no policy.");
+                if (root.Name.Value == "Mutation")
+                {
+                    Assert.True(policies.Contains(Policies.PeopleWrite) || policies.Contains(Policies.DutiesWrite),
+                        $"Mutation.{field.Name.Value} writes without a write policy.");
+                }
             }
         }
     }
@@ -58,11 +76,10 @@ public class AuthTests
     {
         await using var api = await TestApi.CreateAsync(user: TestUser.Anonymous);
 
-        var read = await api.Client.GetAsync("/api/people", Ct);
-        var legacyRead = await api.Client.GetAsync("/AstronautDuty/Anyone", Ct);
+        var graphql = await api.Client.PostAsJsonAsync("/graphql", new { query = Operations.BusinessCalendar }, Ct);
         var me = await api.Client.GetAsync("/auth/me", Ct);
 
-        foreach (var response in new[] { read, legacyRead, me })
+        foreach (var response in new[] { graphql, me })
         {
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
             Assert.Null(response.Headers.Location);
@@ -70,49 +87,70 @@ public class AuthTests
         }
     }
 
-    public static TheoryData<string, string, string> WriteRoutes => new()
+    [Fact]
+    public async Task A_browser_opening_a_protected_url_signed_out_gets_401_not_a_server_error()
     {
-        { "POST", "/Person", "\"New Person\"" },
-        { "PUT", "/Person/by-name?name=New%20Person", "{\"name\":\"New Person\"}" },
-        { "POST", "/api/people", "{\"name\":\"New Person\"}" },
-        { "PUT", "/api/people/{id}", "{\"name\":\"Renamed\",\"version\":\"{version}\"}" },
-        { "POST", "/api/people/{id}/duties", "{\"rank\":\"1LT\",\"dutyTitle\":\"Pilot\",\"dutyStartDate\":\"2020-01-01\"}" },
-        { "POST", "/AstronautDuty", "{\"name\":\"Grace Hopper\",\"rank\":\"1LT\",\"dutyTitle\":\"Pilot\",\"dutyStartDate\":\"2020-01-01\"}" }
+        await using var api = await TestApi.CreateAsync(user: TestUser.Anonymous);
+
+        async Task<HttpResponseMessage> OpenAsync(string path)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Accept.ParseAdd("text/html");
+            return await api.Client.SendAsync(request, Ct);
+        }
+
+        // No ProblemDetails writer accepts text/html; the status alone still says what happened.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await OpenAsync("/graphql")).StatusCode);   // the Development IDE's URL
+        Assert.Equal(HttpStatusCode.Unauthorized, (await OpenAsync("/auth/me")).StatusCode);
+        var outcome = Assert.Single(await api.ProcessLogsAsync(expectedOutcomes: 1));
+        Assert.Equal((ProcessLogOutcome.Rejected, "unauthenticated", "Auth.Me"), (outcome.Outcome, outcome.ErrorCode, outcome.Operation));
+    }
+
+    public static TheoryData<string, string> WriteOperations => new()
+    {
+        { Operations.CreatePerson, """{"input":{"name":"New Person"}}""" },
+        { Operations.UpdatePerson, """{"input":{"id":"{id}","name":"Renamed","version":"{version}"}}""" },
+        { Operations.UpsertPersonByName, """{"input":{"lookupName":"New Person","name":"New Person"}}""" },
+        { Operations.AssignDuty, """{"input":{"person":{"id":"{id}"},"rank":"1LT","dutyTitle":"Pilot","dutyStartDate":"2020-01-01"}}""" },
+        { Operations.AssignDuty, """{"input":{"person":{"name":"Grace Hopper"},"rank":"1LT","dutyTitle":"Pilot","dutyStartDate":"2020-01-01"}}""" }
     };
 
     [Theory]
-    [MemberData(nameof(WriteRoutes))]
-    public async Task Reader_is_forbidden_on_every_write_route_and_nothing_changes(string method, string path, string body)
+    [MemberData(nameof(WriteOperations))]
+    public async Task Reader_is_forbidden_on_every_mutation_and_nothing_changes(string query, string variables)
     {
         await using var api = await TestApi.CreateAsync(user: TestUser.Reader);
         var id = await api.SeedPersonAsync("Grace Hopper");
         var version = await api.WithContextAsync(c => c.People.Where(p => p.Id == id).Select(p => p.Version).SingleAsync());
 
-        var request = new HttpRequestMessage(new HttpMethod(method), path.Replace("{id}", id.ToString()))
-        {
-            Content = new StringContent(body.Replace("{version}", version.ToString()), System.Text.Encoding.UTF8, "application/json")
-        };
-        var response = await api.Client.SendAsync(request, Ct);
+        var response = await api.GraphQLAsync(query,
+            JsonDocument.Parse(variables.Replace("{id}", id.ToString()).Replace("{version}", version.ToString())).RootElement);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Equal("forbidden", await CodeAsync(response));
+        Assert.Equal("forbidden", response.RequestErrorCode);
         Assert.Equal(1, await api.WithContextAsync(c => c.People.CountAsync()));
         Assert.Equal("Grace Hopper", await api.WithContextAsync(c => c.People.Select(p => p.Name).SingleAsync()));
         Assert.Equal(0, await api.WithContextAsync(c => c.AstronautDuties.CountAsync()));
-        Assert.DoesNotContain(await api.ProcessLogsAsync(expectedOutcomes: 1), l => l.Phase == ProcessLogPhase.MutationAudit);
+        var logs = await api.ProcessLogsAsync(expectedOutcomes: 1);
+        Assert.DoesNotContain(logs, l => l.Phase == ProcessLogPhase.MutationAudit);
+        Assert.Equal((ProcessLogOutcome.Rejected, "forbidden"), (logs.Single().Outcome, logs.Single().ErrorCode));
     }
 
     [Fact]
-    public async Task Reader_can_use_every_read_route()
+    public async Task Reader_can_use_every_query()
     {
         await using var api = await TestApi.CreateAsync(user: TestUser.Reader);
         var id = await api.SeedPersonAsync("Grace Hopper");
 
-        foreach (var path in new[] { "/api/people", "/Person", $"/api/people/{id}", $"/api/people/{id}/duties",
-                     "/Person/Grace%20Hopper", "/AstronautDuty/Grace%20Hopper", "/api/metadata", "/auth/me" })
+        var reads = new[]
         {
-            Assert.Equal(HttpStatusCode.OK, (await api.Client.GetAsync(path, Ct)).StatusCode);
-        }
+            await api.GraphQLAsync(Operations.People),
+            await api.GraphQLAsync(Operations.PersonWithDuties, new { id }),
+            await api.GraphQLAsync(Operations.PersonByName, new { name = "Grace Hopper" }),
+            await api.GraphQLAsync(Operations.BusinessCalendar)
+        };
+
+        Assert.All(reads, read => Assert.False(read.HasRequestErrors, read.Body.GetRawText()));
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.GetAsync("/auth/me", Ct)).StatusCode);
     }
 
     [Fact]
@@ -198,10 +236,13 @@ public class AuthTests
     }
 
     [Fact]
-    public async Task Signed_in_write_with_a_bad_antiforgery_token_changes_nothing()
+    public async Task Signed_in_mutation_with_a_bad_antiforgery_token_changes_nothing()
     {
         await using var api = await TestApi.CreateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/people") { Content = JsonContent.Create(new { name = "Forged" }) };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/graphql")
+        {
+            Content = JsonContent.Create(new { query = Operations.CreatePerson, variables = new { input = new { name = "Forged" } } })
+        };
         request.Headers.Add(SecurityServiceCollectionExtensions.XsrfHeaderName, "forged-token");
 
         var response = await api.Client.SendAsync(request, Ct);
@@ -209,6 +250,22 @@ public class AuthTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("csrf_failed", await CodeAsync(response));
         Assert.Equal(0, await api.WithContextAsync(c => c.People.CountAsync()));
+    }
+
+    [Fact]
+    public async Task Queries_need_the_antiforgery_token_too_because_every_operation_is_a_post()
+    {
+        await using var api = await TestApi.CreateAsync();
+        var request = new HttpRequestMessage(HttpMethod.Post, "/graphql")
+        {
+            Content = JsonContent.Create(new { query = Operations.BusinessCalendar })
+        };
+        request.Headers.Add(SecurityServiceCollectionExtensions.XsrfHeaderName, "forged-token");
+
+        var response = await api.Client.SendAsync(request, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("csrf_failed", await CodeAsync(response));
     }
 
     // --- Sessions ---
@@ -221,9 +278,10 @@ public class AuthTests
         return setCookie.Split(';')[0];
     }
 
+    /// <summary>A signed-in read with only the given cookie (no antiforgery token, so a GET).</summary>
     private static Task<HttpResponseMessage> GetWithCookieAsync(TestApi api, string cookie)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/people");
+        var request = new HttpRequestMessage(HttpMethod.Get, "/auth/me");
         request.Headers.Add("Cookie", cookie);
         return api.CreatePlainClient().SendAsync(request, Ct);
     }
@@ -240,7 +298,7 @@ public class AuthTests
 
         Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetWithCookieAsync(api, copiedCookie)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/people", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GraphQLAsync(Operations.People)).Http.StatusCode);
         Assert.NotNull(await api.WithContextAsync(c => c.AuthSessions.Select(s => s.RevokedAtUtc).SingleAsync()));
     }
 
@@ -285,6 +343,7 @@ public class AuthTests
         }
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetWithCookieAsync(api, cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GraphQLAsync(Operations.People)).Http.StatusCode);
     }
 
     // --- Actor on logs ---
@@ -295,8 +354,8 @@ public class AuthTests
         await using var api = await TestApi.CreateAsync();
         var adminId = await api.WithContextAsync(c => c.Users.Where(u => u.UserName == "admin").Select(u => u.Id).SingleAsync());
 
-        var created = await api.Client.PostAsJsonAsync("/api/people", new { name = "Grace Hopper" }, Ct);
-        var personId = (await Json.ReadAsync(created)).GetProperty("id").GetGuid();
+        var created = await api.GraphQLAsync(Operations.CreatePerson, new { input = new { name = "Grace Hopper" } });
+        var personId = created["createPerson"].GetProperty("person").GetProperty("id").GetGuid();
 
         var logs = await api.ProcessLogsAsync(expectedOutcomes: 1);
         var audit = Assert.Single(logs, l => l.Phase == ProcessLogPhase.MutationAudit);

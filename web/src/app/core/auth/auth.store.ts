@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { AuthMe, Capability } from '../data-access/api.models';
-import { isUnavailable, problemCode } from '../http/http-errors';
+import { errorCode, isUnavailable } from '../http/api-errors';
 import { AuthApi, Credentials } from '../data-access/auth-api';
 
 /**
@@ -49,7 +49,7 @@ export const AuthStore = signalStore(
         patchState(store, { status: 'authenticated', user: await api.login(credentials) });
         return 'signed-in';
       } catch (error) {
-        switch (problemCode(error)) {
+        switch (errorCode(error)) {
           case 'invalid_credentials':
             return 'invalid-credentials';
           case 'csrf_failed':

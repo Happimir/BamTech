@@ -6,6 +6,7 @@ using StargateAPI.Application;
 using StargateAPI.Application.Logging;
 using StargateAPI.Controllers;
 using StargateAPI.Domain.Results;
+using StargateAPI.GraphQL;
 using StargateAPI.Hosting;
 using StargateAPI.Infrastructure;
 using StargateAPI.Infrastructure.Identity;
@@ -15,9 +16,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
+// MVC serves only the sign-in routes (/auth); the business API is GraphQL (below).
 builder.Services.AddControllers(options =>
     {
-        // Command bodies are small; bound them so oversized payloads are rejected early.
+        // Request bodies are small; bound them so oversized payloads are rejected early.
         options.Filters.Add(new RequestSizeLimitAttribute(32 * 1024));
         // Every POST/PUT/PATCH/DELETE (including login and logout) must carry the antiforgery token.
         options.Filters.Add<AntiforgeryValidationFilter>();
@@ -37,18 +39,12 @@ builder.Services.AddControllers(options =>
             context.HttpContext.RequestServices.GetService<OperationContext>()?.ErrorCode = ErrorCodes.Validation;
             return new BadRequestObjectResult(problem) { ContentTypes = { ControllerBaseExtensions.ProblemJson } };
         };
-        // The framework's title/type table has no 428 (a missing version); give it the same shape as the others.
-        options.ClientErrorMapping[StatusCodes.Status428PreconditionRequired] = new ClientErrorData
-        {
-            Title = "Precondition Required",
-            Link = "https://www.rfc-editor.org/rfc/rfc6585#section-3"
-        };
     });
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// The business API: one GraphQL endpoint whose resolvers send the same MediatR requests.
+builder.Services.AddActsGraphQL(builder.Environment);
 
 // Layers: use cases (Application) and their persistence implementation (Infrastructure).
 builder.Services.AddApplication();
@@ -83,12 +79,6 @@ app.UseMiddleware<RequestOutcomeLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
@@ -107,13 +97,21 @@ app.Use(async (httpContext, next) =>
 
 app.UseAuthorization();
 
+// After authorization: antiforgery and the body limit for the GraphQL endpoint.
+app.UseWhen(
+    httpContext => httpContext.Request.Path.StartsWithSegments(GraphQLServiceCollectionExtensions.Path),
+    branch => branch.UseMiddleware<GraphQLRequestGuard>());
+
 app.MapControllers();
+// Signed-in users only (the fallback policy); each field then checks its own policy.
+app.MapGraphQL(GraphQLServiceCollectionExtensions.Path);
 if (spaFiles is not null)
 {
     app.MapSpaFallback(spaFiles);
 }
 
-app.Run();
+// Also handles `schema export` (see README), which writes schema.graphql for the UI's code generator.
+await app.RunWithGraphQLCommandsAsync(args);
 
 // Exposes the implicit Program class to WebApplicationFactory in the test project.
 public partial class Program { }

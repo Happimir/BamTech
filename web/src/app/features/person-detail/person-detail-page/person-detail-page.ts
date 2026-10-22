@@ -58,7 +58,7 @@ export class PersonDetailPage {
   protected readonly summary = computed(() => {
     const astronaut = this.store.person()?.astronaut;
     if (!astronaut) return null;
-    const retired = astronaut.status === 'retired';
+    const retired = astronaut.status === 'RETIRED';
     return {
       rank: astronaut.currentRank,
       duty: retired ? 'Retired' : astronaut.currentDutyTitle,

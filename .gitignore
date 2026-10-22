@@ -495,3 +495,6 @@ dist/
 # Coverage output
 coverage/
 TestResults/
+
+# Hot Chocolate `schema export` also writes Fusion gateway settings, which this API does not use
+schema-settings.json

@@ -81,7 +81,7 @@ test('unknown and malformed IDs show not found; a malformed ID makes no request'
 
   const detailRequests: string[] = [];
   page.on('request', (r) => {
-    if (r.url().includes('/duties')) detailRequests.push(r.url());
+    if (r.url().endsWith('/graphql') && r.postDataJSON()?.operationName === 'PersonDetail') detailRequests.push(r.url());
   });
   await page.goto('/people/not-a-real-id');
   await expect(page.getByRole('heading', { name: 'Person not found' })).toBeVisible();

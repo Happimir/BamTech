@@ -176,7 +176,7 @@ export class DutyDialog {
     const inOrder = !start || !latest || start > latest;
 
     if (current && inOrder) {
-      const title = current.status === 'retired' ? 'The retirement' : current.currentDutyTitle;
+      const title = current.status === 'RETIRED' ? 'The retirement' : current.currentDutyTitle;
       lines.push(`${title} ends ${dayBefore}.`);
     }
     if (draft.kind === 'retire') {

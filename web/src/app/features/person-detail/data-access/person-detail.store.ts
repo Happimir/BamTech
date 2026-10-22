@@ -1,10 +1,12 @@
-import { HttpErrorResponse, httpResource } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { signalStore, withComputed, withMethods, withProps } from '@ngrx/signals';
+import { Apollo } from 'apollo-angular';
+import { map } from 'rxjs';
 import { PersonDuties } from '../../../core/data-access/api.models';
-import { isUnavailable } from '../../../core/http/http-errors';
+import { PersonDetailDocument } from '../../../core/data-access/graphql/generated';
+import { errorCode, isUnavailable } from '../../../core/http/api-errors';
 import { personStatus } from '../../../shared/utils/person-status';
 import { buildTimeline } from '../utils/timeline';
 
@@ -14,8 +16,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * State for /people/:id; provide it on the page. The summary and the timeline both come from
- * one /duties response, which the API reads as a single snapshot, so they can never disagree.
- * A malformed ID is a local not-found: no request is made for it.
+ * one query that selects the person with their duties, which the API reads as a single
+ * snapshot, so they can never disagree. A malformed ID is a local not-found: no request is
+ * made for it. An unknown ID is a null person.
  */
 export const PersonDetailStore = signalStore(
   withProps(() => {
@@ -23,11 +26,29 @@ export const PersonDetailStore = signalStore(
     const id = computed(() => params().get('id') ?? '');
     return { id, isValidId: computed(() => UUID.test(id())) };
   }),
-  withProps(({ id, isValidId }) => ({
-    _details: httpResource<PersonDuties>(() =>
-      isValidId() ? `/api/people/${encodeURIComponent(id())}/duties` : undefined,
-    ),
-  })),
+  withProps(({ id, isValidId }) => {
+    const apollo = inject(Apollo);
+    return {
+      _details: rxResource<PersonDuties | null, string | undefined>({
+        params: () => (isValidId() ? id() : undefined),
+        stream: ({ params: personId }) =>
+          apollo
+            .query({
+              query: PersonDetailDocument,
+              variables: { id: personId },
+              fetchPolicy: 'network-only',
+            })
+            .pipe(
+              map((result) => {
+                const person = result.data?.person;
+                if (!person) return null;
+                const { duties, ...detail } = person;
+                return { person: detail, duties };
+              }),
+            ),
+      }),
+    };
+  }),
   withComputed(({ _details, isValidId }) => {
     const snapshot = computed(() => (_details.hasValue() ? _details.value() : undefined));
     const person = computed(() => snapshot()?.person);
@@ -41,10 +62,11 @@ export const PersonDetailStore = signalStore(
       view: computed<DetailView>(() => {
         if (!isValidId()) return 'not-found';
         const error = _details.error();
-        if (error instanceof HttpErrorResponse && error.status === 404) return 'not-found';
-        if (error instanceof HttpErrorResponse && error.status === 403) return 'forbidden';
+        if (error && errorCode(error) === 'forbidden') return 'forbidden';
         if (error) return 'error';
-        return snapshot() ? 'ready' : 'loading';
+        const value = snapshot();
+        if (value === null) return 'not-found';
+        return value ? 'ready' : 'loading';
       }),
     };
   }),

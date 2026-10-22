@@ -1,0 +1,10 @@
+# The person and their history, newest first. Selected together, the API reads them as one
+# database snapshot, so the summary and the timeline can never disagree.
+query PersonDetail($id: UUID!) {
+  person(id: $id) {
+    ...PersonFields
+    duties {
+      ...DutyFields
+    }
+  }
+}

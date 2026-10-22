@@ -2,12 +2,19 @@ import { expect, Page, Request, test } from '@playwright/test';
 
 const adminPassword = process.env['E2E_ADMIN_PASSWORD'] ?? 'Admin!2026';
 
-/** Records every list request the page makes from now on. */
-function trackListRequests(page: Page): URL[] {
-  const seen: URL[] = [];
+interface PeopleVariables {
+  page: number;
+  pageSize: number;
+  name: string | null;
+}
+
+/** Records the variables of every directory query (the People operation) the page sends from now on. */
+function trackListRequests(page: Page): PeopleVariables[] {
+  const seen: PeopleVariables[] = [];
   page.on('request', (request: Request) => {
-    const url = new URL(request.url());
-    if (url.pathname === '/api/people') seen.push(url);
+    if (new URL(request.url()).pathname !== '/graphql') return;
+    const body = request.postDataJSON() as { operationName?: string; variables: PeopleVariables };
+    if (body.operationName === 'People') seen.push(body.variables);
   });
   return seen;
 }
@@ -34,8 +41,8 @@ test('typing alone sends no request; Enter applies the search once and the URL k
   await search.press('Enter');
   await expect(page).toHaveURL(/\/people\?name=Gra$/);
   await expect(page.getByRole('link', { name: 'Grace Okonkwo', exact: true })).toBeVisible();
-  expect(requests.map((u) => u.searchParams.get('name'))).toEqual(['Gra']);
-  expect(requests[0].searchParams.get('page')).toBe('1');
+  expect(requests.map((v) => v.name)).toEqual(['Gra']);
+  expect(requests[0].page).toBe(1);
 
   // The applied search survives a reload: the URL is the source of truth.
   await page.reload();
@@ -63,7 +70,7 @@ test('paging requests one page at a time and Back restores the previous page', a
   await expect(page).toHaveURL(/\/people\?page=2$/);
   await expect(page.getByRole('status').filter({ hasText: /people/ })).toContainText('showing 26–');
   expect(requests).toHaveLength(1);
-  expect(requests[0].searchParams.get('page')).toBe('2');
+  expect(requests[0].page).toBe(2);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/people$/);

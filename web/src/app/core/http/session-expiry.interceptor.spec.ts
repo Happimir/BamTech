@@ -36,7 +36,7 @@ describe('sessionExpiryInterceptor', () => {
   }
 
   it('signs out and returns to sign-in when a protected API call gets 401', async () => {
-    await respond('/api/people?page=1&pageSize=25', 401);
+    await respond('/graphql', 401, 'POST');
     expect(sessionExpired).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/' } });
   });
@@ -48,7 +48,7 @@ describe('sessionExpiryInterceptor', () => {
   });
 
   it('does not treat 403 as a lost session', async () => {
-    await respond('/api/people', 403, 'POST');
+    await respond('/graphql', 403, 'POST');
     expect(sessionExpired).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
   });

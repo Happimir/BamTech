@@ -36,16 +36,22 @@ test('the API refuses a Reader write sent directly from the browser session', as
       .split('; ')
       .find((c) => c.startsWith('XSRF-TOKEN='))
       ?.slice('XSRF-TOKEN='.length);
-    const write = await fetch('/api/people', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': decodeURIComponent(token ?? '') },
-      body: JSON.stringify({ name: personName }),
-    });
-    const problem = await write.json();
-    const check = await fetch(`/api/people?name=${encodeURIComponent(personName)}`);
-    return { status: write.status, code: problem.code, matches: (await check.json()).totalCount };
+    const graphql = async (query: string, variables: object) =>
+      (
+        await fetch('/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': decodeURIComponent(token ?? '') },
+          body: JSON.stringify({ query, variables }),
+        })
+      ).json();
+    const write = await graphql(
+      'mutation ($input: CreatePersonInput!) { createPerson(input: $input) { person { id } } }',
+      { input: { name: personName } },
+    );
+    const check = await graphql('query ($name: String!) { people(name: $name) { totalCount } }', { name: personName });
+    return { code: write.errors?.[0]?.extensions?.code, matches: check.data.people.totalCount };
   }, name);
 
-  // A valid CSRF token and session, but the role lacks People.Write: 403, nothing created.
-  expect(result).toEqual({ status: 403, code: 'forbidden', matches: 0 });
+  // A valid CSRF token and session, but the role lacks People.Write: the field is denied, nothing created.
+  expect(result).toEqual({ code: 'forbidden', matches: 0 });
 });

@@ -1,7 +1,6 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialogConfig } from '@angular/material/dialog';
 import { ReadonlyFieldTree, ValidationError } from '@angular/forms/signals';
-import { fieldErrors, isUncertainOutcome, problemCode, problemDetail } from '../../../core/http/http-errors';
+import { errorCode, errorMessage, fieldErrors, isUncertainOutcome } from '../../../core/http/api-errors';
 
 /** Shared by the admin dialogs: near full width on a phone, focus on the first field, focus returns. */
 export const ADMIN_DIALOG_CONFIG: MatDialogConfig = {
@@ -54,7 +53,7 @@ export type WriteFailure =
 
 export function classifyWriteFailure(error: unknown): WriteFailure {
   if (isUncertainOutcome(error)) return { kind: 'uncertain' };
-  const code = problemCode(error);
+  const code = errorCode(error);
   if (code === 'concurrency_conflict') {
     return { kind: 'stale', message: 'Someone else changed this person after you opened this form.' };
   }
@@ -64,10 +63,13 @@ export function classifyWriteFailure(error: unknown): WriteFailure {
 }
 
 function rejectionMessage(error: unknown, code: string | undefined): string {
-  if (code === 'csrf_failed') return 'Your form session expired. Save again to continue.';
-  if (error instanceof HttpErrorResponse) {
-    if (error.status === 403) return 'Your account is not allowed to make this change.';
-    if (error.status === 503) return 'The ACTS service is busy or unavailable. Nothing was saved; try again.';
+  switch (code) {
+    case 'csrf_failed':
+      return 'Your form session expired. Save again to continue.';
+    case 'forbidden':
+      return 'Your account is not allowed to make this change.';
+    case 'service_unavailable':
+      return 'The ACTS service is busy or unavailable. Nothing was saved; try again.';
   }
-  return problemDetail(error) ?? 'The change could not be saved. Nothing was written.';
+  return errorMessage(error) ?? 'The change could not be saved. Nothing was written.';
 }

@@ -1,41 +1,50 @@
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, computed, Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { ApolloTestingController, TestOperation } from 'apollo-angular/testing';
 import { PersonDetail } from '../../../core/data-access/api.models';
+import { PeopleApi } from '../../../core/data-access/people-api';
+import {
+  AssignDutyDocument,
+  BusinessCalendarDocument,
+} from '../../../core/data-access/graphql/generated';
+import {
+  astronautFixture,
+  dutyFixture,
+  personFixture,
+  provideApolloTesting,
+} from '../../../core/data-access/graphql/testing';
 import { personStatus } from '../../../shared/utils/person-status';
 import { PersonDetailStore } from '../../person-detail/data-access/person-detail.store';
 import { DutyDialog, DutySaved } from './duty-dialog';
 import { ADMIN_DIALOG_CONFIG } from '../shared/write-outcome';
 
 const ID = '019a2b3c-4d5e-7f60-8a71-b2c3d4e5f607';
-const DUTIES_URL = `/api/people/${ID}/duties`;
 
-const active: PersonDetail = {
+const active: PersonDetail = personFixture({
   id: ID,
   name: 'Grace Okonkwo',
   version: 'version-1',
-  firstName: null,
-  middleName: null,
-  lastName: null,
-  astronaut: {
+  astronaut: astronautFixture({
     currentRank: 'Captain',
     currentDutyTitle: 'Commander',
     currentDutyStartDate: '2024-06-01',
     careerStartDate: '2015-01-01',
-    careerEndDate: null,
-    status: 'active',
-  },
-};
+  }),
+});
 
 const retired: PersonDetail = {
   ...active,
-  astronaut: { ...active.astronaut!, currentDutyTitle: 'RETIRED', careerEndDate: '2024-05-31', status: 'retired' },
+  astronaut: { ...active.astronaut!, currentDutyTitle: 'RETIRED', careerEndDate: '2024-05-31', status: 'RETIRED' },
 };
 
 const unassigned: PersonDetail = { ...active, astronaut: null };
+
+/** An assignDuty payload refused with one business error (returned as data, not as a failure). */
+function refused(error: Record<string, unknown>) {
+  return { assignDuty: { __typename: 'AssignDutyPayload', duty: null, person: null, errors: [error] } };
+}
 
 /** Stands in for the detail page's store: the dialog reads the person and version live from it. */
 function fakeStore(person: PersonDetail, latestDutyStart: string | null) {
@@ -50,12 +59,12 @@ function fakeStore(person: PersonDetail, latestDutyStart: string | null) {
 }
 
 describe('DutyDialog', () => {
-  let http: HttpTestingController;
+  let apollo: ApolloTestingController;
   let ref: MatDialogRef<DutyDialog, DutySaved>;
   let dialog: DutyDialog;
   let closedWith: DutySaved | undefined | 'open';
 
-  // The submission action resolves after HTTP, outside Angular's pending tasks: drain a macrotask too.
+  // The submission action resolves after the operation, outside Angular's pending tasks: drain a macrotask too.
   const settle = async () => {
     TestBed.tick();
     await TestBed.inject(ApplicationRef).whenStable();
@@ -84,9 +93,12 @@ describe('DutyDialog', () => {
     ref.afterClosed().subscribe((result) => (closedWith = result));
     dialog = ref.componentInstance;
     await settle();
-    const request = http.expectOne('/api/metadata');
-    if (metadata === 'fails') request.flush(null, { status: 503, statusText: 'Unavailable' });
-    else request.flush(metadata);
+    const request = apollo.expectOne(BusinessCalendarDocument);
+    if (metadata === 'fails') {
+      request.graphqlErrors([{ message: 'busy', extensions: { code: 'service_unavailable' } }]);
+    } else {
+      request.flushData({ businessCalendar: { __typename: 'BusinessCalendar', ...metadata } });
+    }
     await settle();
   }
 
@@ -103,27 +115,25 @@ describe('DutyDialog', () => {
     await settle();
   }
 
-  async function respond(status: number, body: object | null): Promise<void> {
-    const request = http.expectOne(DUTIES_URL);
-    if (status === 0) request.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
-    else request.flush(body, { status, statusText: String(status) });
+  async function respond(answer: (operation: TestOperation) => void): Promise<void> {
+    answer(apollo.expectOne(AssignDutyDocument));
     await settle();
   }
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
+        provideApolloTesting(),
+        PeopleApi,
         { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
       ],
     });
-    http = TestBed.inject(HttpTestingController);
+    apollo = TestBed.inject(ApolloTestingController);
   });
 
   afterEach(() => {
     TestBed.inject(MatDialog).closeAll();
-    http.verify();
+    apollo.verify();
     vi.unstubAllEnvs();
   });
 
@@ -134,14 +144,22 @@ describe('DutyDialog', () => {
     await fill({ kind: 'retire', start: new Date(2026, 0, 1) });
     await save();
 
-    const request = http.expectOne(DUTIES_URL);
-    expect(request.request.body).toEqual({
+    const request = apollo.expectOne(AssignDutyDocument);
+    expect(request.operation.variables['input']).toEqual({
+      person: { id: ID },
       rank: 'Captain',
       dutyTitle: 'RETIRED',
       dutyStartDate: '2026-01-01',
       expectedVersion: 'version-1',
     });
-    request.flush({ id: 'd', personId: ID, version: 'version-2' }, { status: 201, statusText: 'Created' });
+    request.flushData({
+      assignDuty: {
+        __typename: 'AssignDutyPayload',
+        duty: dutyFixture({ id: 'd', dutyTitle: 'RETIRED', dutyStartDate: '2026-01-01', isRetirement: true }),
+        person: { ...retired, version: 'version-2' },
+        errors: null,
+      },
+    });
     await settle();
     expect(closedWith).toBe('Retirement recorded');
   });
@@ -172,7 +190,7 @@ describe('DutyDialog', () => {
     await save();
 
     expect(form().dutyTitle().errors().map((e) => e.message)).toEqual([message]);
-    // afterEach: http.verify() fails if the duty was sent.
+    // afterEach: apollo.verify() fails if the duty was sent.
   });
 
   it('rejects, before sending, a start that is not after the current duty or is after the business date', async () => {
@@ -206,7 +224,16 @@ describe('DutyDialog', () => {
     // Far in the future, but only the server may refuse it.
     await fill({ title: 'Pilot', start: new Date(2099, 0, 1) });
     await save();
-    await respond(400, { code: 'validation', errors: { dutyStartDate: ['Duty start date cannot be in the future.'] } });
+    await respond((op) =>
+      op.flushData(
+        refused({
+          __typename: 'ValidationError',
+          code: 'validation',
+          message: 'One or more fields are invalid.',
+          fields: [{ __typename: 'InvalidField', field: 'dutyStartDate', messages: ['Duty start date cannot be in the future.'] }],
+        }),
+      ),
+    );
 
     expect(dialog['startDateMessages']()).toEqual(['Duty start date cannot be in the future.']);
     expect(closedWith).toBe('open');
@@ -216,7 +243,15 @@ describe('DutyDialog', () => {
     await open(fakeStore(active, '2024-06-01'));
     await fill({ title: 'Pilot', start: new Date(2025, 0, 1) });
     await save();
-    await respond(409, { code: 'chronology_conflict', detail: 'A new duty must start after 2025-02-01.' });
+    await respond((op) =>
+      op.flushData(
+        refused({
+          __typename: 'ChronologyConflictError',
+          code: 'chronology_conflict',
+          message: 'A new duty must start after 2025-02-01.',
+        }),
+      ),
+    );
 
     expect(dialog['startDateMessages']()).toEqual(['A new duty must start after 2025-02-01.']);
     expect(form().dutyTitle().value()).toBe('Pilot');
@@ -228,7 +263,11 @@ describe('DutyDialog', () => {
     await open(store);
     await fill({ title: 'Pilot', start: new Date(2025, 0, 1) });
     await save();
-    await respond(409, { code: 'concurrency_conflict' });
+    await respond((op) =>
+      op.flushData(
+        refused({ __typename: 'ConcurrencyConflictError', code: 'concurrency_conflict', message: 'Changed.' }),
+      ),
+    );
 
     expect(notice()).toContain('Someone else changed this person');
     overlay().querySelector<HTMLButtonElement>('.notice button')!.click();
@@ -236,10 +275,10 @@ describe('DutyDialog', () => {
     store.current.set({ ...active, version: 'version-2' });
     await settle();
     // Nothing was replayed automatically.
-    http.verify();
+    apollo.verify();
 
     await save();
-    expect(http.expectOne(DUTIES_URL).request.body.expectedVersion).toBe('version-2');
+    expect(apollo.expectOne(AssignDutyDocument).operation.variables['input'].expectedVersion).toBe('version-2');
   });
 
   it('after an unknown outcome, reloads the record for review and does not retry', async () => {
@@ -247,7 +286,8 @@ describe('DutyDialog', () => {
     await open(store);
     await fill({ title: 'Pilot', start: new Date(2025, 0, 1) });
     await save();
-    await respond(0, null);
+    // The link reports a lost connection as a plain error, without a status.
+    await respond((op) => op.networkError(new Error('Http failure response for /graphql: 0 Unknown Error')));
 
     expect(store.reload).toHaveBeenCalledTimes(1);
     expect(notice()).toContain("The save couldn't be confirmed");
@@ -262,7 +302,7 @@ describe('DutyDialog', () => {
     expect(saveButton().disabled).toBe(true);
     expect(saveButton().textContent?.trim()).toBe('Saving…');
     expect(ref.disableClose).toBe(true);
-    await respond(503, { code: 'service_unavailable' });
+    await respond((op) => op.graphqlErrors([{ message: 'busy', extensions: { code: 'service_unavailable' } }]));
     expect(saveButton().disabled).toBe(false);
     expect(ref.disableClose).toBe(false);
     expect(notice()).toContain('Nothing was saved');

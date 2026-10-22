@@ -9,7 +9,12 @@ namespace StargateAPI.Application
         /// <summary>The use cases (MediatR handlers), the services they share, and the per-request logging context.</summary>
         public static IServiceCollection AddApplication(this IServiceCollection services)
         {
-            services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
+            services.AddMediatR(cfg =>
+            {
+                cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+                cfg.AddOpenBehavior(typeof(OneRequestAtATimeBehavior<,>));
+            });
+            services.AddScoped<RequestGate>();
 
             // Per-request logging facts shared by the HTTP boundary, handlers and exception handling.
             services.AddScoped<OperationContext>();

@@ -13,9 +13,6 @@ namespace StargateAPI.Controllers
     /// </summary>
     public sealed class RequestOutcomeLoggingMiddleware
     {
-        // Documentation and business-calendar metadata are excluded to avoid log noise, as are
-        // endpoints marked SkipRequestOutcomeLog (the hosted UI's index.html).
-        private static readonly PathString[] ExcludedPaths = ["/swagger", "/api/metadata"];
         private static readonly TimeSpan LogWriteTimeout = TimeSpan.FromSeconds(2);
 
         private readonly RequestDelegate _next;
@@ -35,14 +32,20 @@ namespace StargateAPI.Controllers
 
         public async Task InvokeAsync(HttpContext httpContext, OperationContext operation)
         {
-            if (ExcludedPaths.Any(path => httpContext.Request.Path.StartsWithSegments(path))
-                || httpContext.GetEndpoint()?.Metadata.GetMetadata<SkipRequestOutcomeLog>() is not null)
+            // Not operations: endpoints marked SkipRequestOutcomeLog (the hosted UI's index.html),
+            // and GETs of the GraphQL path, which serve the Development IDE (operations are POSTs).
+            if (httpContext.GetEndpoint()?.Metadata.GetMetadata<SkipRequestOutcomeLog>() is not null
+                || (HttpMethods.IsGet(httpContext.Request.Method)
+                    && httpContext.Request.Path.StartsWithSegments(GraphQL.GraphQLServiceCollectionExtensions.Path)))
             {
                 await _next(httpContext);
                 return;
             }
 
             operation.TraceId = Activity.Current?.Id ?? httpContext.TraceIdentifier;
+            // W3C Trace Context's response header: the trace ID that finds this request's log rows,
+            // also for a GraphQL refusal returned as data (a 200 with no ProblemDetails body).
+            httpContext.Response.Headers["traceresponse"] = operation.TraceId;
             // Captured now: exception handling clears the endpoint before re-executing.
             var operationName = OperationName(httpContext);
             var started = _timeProvider.GetTimestamp();
@@ -68,6 +71,8 @@ namespace StargateAPI.Controllers
         {
             try
             {
+                // GraphQL names its operation once parsed; every GraphQL request has the same endpoint.
+                operationName = operation.OperationName ?? operationName;
                 var status = httpContext.Response.StatusCode;
                 ProcessLogOutcome outcome;
                 if (httpContext.RequestAborted.IsCancellationRequested)
@@ -86,10 +91,14 @@ namespace StargateAPI.Controllers
                 }
                 else
                 {
+                    // A GraphQL response is a 200 even when it carries an error (a business error
+                    // as data, a denied field, a resolver fault); whoever produced it set the code.
                     outcome = status switch
                     {
                         >= 500 => ProcessLogOutcome.Failed,
                         >= 400 => ProcessLogOutcome.Rejected,
+                        _ when operation.Failed => ProcessLogOutcome.Failed,
+                        _ when operation.ErrorCode is not null => ProcessLogOutcome.Rejected,
                         _ => ProcessLogOutcome.Succeeded
                     };
                     if (outcome != ProcessLogOutcome.Succeeded)

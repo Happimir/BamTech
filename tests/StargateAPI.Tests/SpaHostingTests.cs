@@ -34,19 +34,17 @@ public class SpaHostingTests
     }
 
     [Theory]
-    [InlineData("/api/nope")]
-    [InlineData("/API/People/not-a-guid")]
     [InlineData("/auth/nope")]
-    [InlineData("/swagger/nope")]
-    [InlineData("/Person/a/b")]
-    [InlineData("/AstronautDuty/a/b")]
-    public async Task Api_paths_keep_their_own_404_instead_of_the_shell(string path)
+    [InlineData("/graphql/nope")]
+    [InlineData("/GraphQL")]
+    public async Task Api_paths_keep_their_own_errors_instead_of_the_shell(string path)
     {
         await using var api = await TestApi.CreateAsync(spaRootPath: CreateUiBuild());
 
         var response = await api.Client.GetAsync(path, Ct);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // A GET of /graphql outside Development is refused by the GraphQL server (no IDE, no GET operations).
+        Assert.False(response.IsSuccessStatusCode, $"{path} returned {(int)response.StatusCode}");
         Assert.NotEqual(Shell, await response.Content.ReadAsStringAsync(Ct));
     }
 
@@ -59,11 +57,11 @@ public class SpaHostingTests
         (await api.Client.GetAsync("/", Ct)).EnsureSuccessStatusCode();
         (await api.Client.GetAsync($"/people/{id}", Ct)).EnsureSuccessStatusCode();
         (await api.Client.GetAsync("/main-TEST.js", Ct)).EnsureSuccessStatusCode();
-        (await api.Client.GetAsync($"/api/people/{id}", Ct)).EnsureSuccessStatusCode();
+        Assert.False((await api.GraphQLAsync(Operations.Person, new { id })).HasRequestErrors);
 
         var outcome = Assert.Single(await api.ProcessLogsAsync(expectedOutcomes: 1),
             l => l.Phase == ProcessLogPhase.RequestOutcome);
-        Assert.Equal("People.GetPerson", outcome.Operation);
+        Assert.Equal("query person", outcome.Operation);
     }
 
     [Fact]

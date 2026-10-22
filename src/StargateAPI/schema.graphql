@@ -1,0 +1,310 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  """
+  People one page at a time (1-based page, size 1–100, default 25), in directory order,
+  optionally filtered by a case-insensitive name prefix.
+  """
+  people(page: Int, pageSize: Int, name: String): PersonPage!
+    @authorize(policy: "People.Read")
+    @cost(weight: "10")
+  "One person by stable ID, or null if there is none."
+  person(id: UUID!): Person
+    @authorize(policy: "People.Read")
+    @cost(weight: "10")
+  """
+  One person by exact name (trimmed, case-insensitive, accents kept). Names are not
+  unique: a name two people share is an AmbiguousNameError, never an arbitrary match.
+  """
+  personByName(name: String!): PersonByNameResult!
+    @authorize(policy: "People.Read")
+    @cost(weight: "10")
+  "The business date (UTC). Informational: the server re-checks dates on every write."
+  businessCalendar: BusinessCalendar! @authorize(policy: "People.Read")
+}
+
+type Mutation {
+  "Always creates a new person, even when a namesake exists. Repeating it creates another."
+  createPerson(input: CreatePersonInput!): CreatePersonPayload!
+    @authorize(policy: "People.Write")
+    @cost(weight: "10")
+  """
+  Replaces the name fields; omitted parts become null. Requires the version read from the
+  person: a stale one is a ConcurrencyConflictError. The ID and duty history never change.
+  """
+  updatePerson(input: UpdatePersonInput!): UpdatePersonPayload!
+    @authorize(policy: "People.Write")
+    @cost(weight: "10")
+  """
+  The assignment's "add/update a person by name". lookupName selects the person; name is
+  the requested display name. With no match it creates only when both names are the same
+  and no expectedVersion is sent, so a retried rename can never create a duplicate. A
+  rename needs expectedVersion and clears the structured name parts.
+  """
+  upsertPersonByName(input: UpsertPersonByNameInput!): UpsertPersonByNamePayload!
+    @authorize(policy: "People.Write")
+    @cost(weight: "10")
+  """
+  Appends a duty. The previous duty closes the day before; end and career dates are
+  derived, never accepted. Send expectedVersion to refuse the write if the person changed.
+  """
+  assignDuty(input: AssignDutyInput!): AssignDutyPayload!
+    @authorize(policy: "Duties.Write")
+    @cost(weight: "10")
+}
+
+"The person is already retired."
+type AlreadyRetiredError implements Error {
+  message: String!
+  code: String!
+}
+
+"More than one person has the name; select the person by ID instead."
+type AmbiguousNameError implements Error {
+  message: String!
+  code: String!
+}
+
+"The new duty and the person it was added to, read after the change committed."
+type AssignDutyPayload {
+  duty: Duty @cost(weight: "10")
+  "The person as it is now, including the new version for the next write."
+  person: Person @cost(weight: "10")
+  errors: [AssignDutyError!]
+}
+
+"The current assignment; null on a person with no assignments (rule 2)."
+type AstronautSummary {
+  currentRank: String!
+  currentDutyTitle: String!
+  currentDutyStartDate: LocalDate!
+  careerStartDate: LocalDate!
+  careerEndDate: LocalDate
+  status: CareerStatus!
+}
+
+"The server's \"today\" for date rules (the latest allowed duty start date), and its zone."
+type BusinessCalendar {
+  businessDate: LocalDate!
+  businessTimeZone: String!
+}
+
+"The start date is not after the person's current duty (rule 5)."
+type ChronologyConflictError implements Error {
+  message: String!
+  code: String!
+}
+
+"The person changed after the client read it; reload and review."
+type ConcurrencyConflictError implements Error {
+  message: String!
+  code: String!
+}
+
+type CreatePersonPayload {
+  person: Person
+  errors: [CreatePersonError!]
+}
+
+"One assignment. The current duty has no end date (rule 4)."
+type Duty {
+  id: UUID!
+  rank: String!
+  dutyTitle: String!
+  dutyStartDate: LocalDate!
+  dutyEndDate: LocalDate
+  isRetirement: Boolean!
+}
+
+"Retirement cannot be a person's first duty."
+type FirstDutyRetirementError implements Error {
+  message: String!
+  code: String!
+}
+
+"One invalid input field and why. Field names match the input's camelCase names."
+type InvalidField {
+  field: String!
+  messages: [String!]!
+}
+
+type NotFoundError implements Error {
+  message: String!
+  code: String!
+}
+
+"A person with a stable ID. Names are not unique; namesakes have separate IDs and histories."
+type Person {
+  """
+  The duty history, newest first. Batched across people by the DataLoader; when a
+  single-person read already loaded the history in its snapshot, that copy is used.
+  """
+  duties: [Duty!]! @cost(weight: "10")
+  id: UUID!
+  name: String!
+  version: UUID!
+  astronaut: AstronautSummary
+  firstName: String
+  middleName: String
+  lastName: String
+}
+
+"One page of the directory. A page beyond the last has no items; totalPages is 0 when nothing matches."
+type PersonPage {
+  items: [Person!]!
+  page: Int!
+  pageSize: Int!
+  totalCount: Int!
+  totalPages: Int!
+}
+
+type UpdatePersonPayload {
+  person: Person
+  errors: [UpdatePersonError!]
+}
+
+"The person, and whether this call created them (false when found or renamed)."
+type UpsertPersonByNamePayload {
+  person: Person
+  created: Boolean
+  errors: [UpsertPersonByNameError!]
+}
+
+type ValidationError implements Error {
+  message: String!
+  fields: [InvalidField!]!
+  code: String!
+}
+
+"A rename by name needs the person's current version."
+type VersionRequiredError implements Error {
+  message: String!
+  code: String!
+}
+
+"""
+The interface every business error implements. Clients branch on the concrete type
+(__typename) or the stable code, never on the message.
+"""
+interface Error {
+  "Safe to show to a user as written."
+  message: String!
+  "The stable error code, as stored in the process log."
+  code: String!
+}
+
+union AssignDutyError =
+  | ValidationError
+  | NotFoundError
+  | AmbiguousNameError
+  | ConcurrencyConflictError
+  | ChronologyConflictError
+  | FirstDutyRetirementError
+  | AlreadyRetiredError
+
+union CreatePersonError = ValidationError
+
+union PersonByNameResult =
+  | Person
+  | ValidationError
+  | NotFoundError
+  | AmbiguousNameError
+
+union UpdatePersonError =
+  | ValidationError
+  | NotFoundError
+  | ConcurrencyConflictError
+
+union UpsertPersonByNameError =
+  | ValidationError
+  | NotFoundError
+  | AmbiguousNameError
+  | ConcurrencyConflictError
+  | VersionRequiredError
+
+input AssignDutyInput {
+  person: PersonSelectorInput!
+  rank: String!
+  dutyTitle: String!
+  dutyStartDate: LocalDate!
+  expectedVersion: UUID
+}
+
+input CreatePersonInput {
+  name: String!
+  firstName: String
+  middleName: String
+  lastName: String
+}
+
+"""
+Selects a person by exactly one of a stable ID or an exact name (@oneOf). A name two
+people share is refused with an AmbiguousNameError and nothing is written.
+"""
+input PersonSelectorInput @oneOf {
+  id: UUID
+  name: String
+}
+
+input UpdatePersonInput {
+  id: UUID!
+  name: String!
+  firstName: String
+  middleName: String
+  lastName: String
+  version: UUID!
+}
+
+input UpsertPersonByNameInput {
+  lookupName: String!
+  name: String!
+  expectedVersion: UUID
+}
+
+"Defines when a policy shall be executed."
+enum ApplyPolicy {
+  "Before the resolver was executed."
+  BEFORE_RESOLVER
+  "After the resolver was executed."
+  AFTER_RESOLVER
+  "The policy is applied in the validation step before the execution."
+  VALIDATION
+}
+
+enum CareerStatus {
+  ACTIVE
+  RETIRED
+}
+
+"The `LocalDate` scalar type represents a date without time or time zone information."
+scalar LocalDate
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/local-date.html")
+
+"The `UUID` scalar type represents a Universally Unique Identifier (UUID) as defined by RFC 9562."
+scalar UUID
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/uuid.html")
+
+"The authorize directive."
+directive @authorize(
+  "The name of the authorization policy that determines access to the annotated resource."
+  policy: String
+  "Roles that are allowed to access the annotated resource."
+  roles: [String!]
+  "Defines when the authorize directive shall be applied. By default the authorize directive is applied before the resolver is executed."
+  apply: ApplyPolicy! = BEFORE_RESOLVER
+) repeatable on OBJECT | FIELD_DEFINITION
+
+"The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
+directive @cost(
+  "The `weight` argument defines what value to add to the overall cost for every appearance, or possible appearance, of a type, field, argument, etc."
+  weight: String!
+) on
+  | SCALAR
+  | OBJECT
+  | FIELD_DEFINITION
+  | ARGUMENT_DEFINITION
+  | ENUM
+  | INPUT_FIELD_DEFINITION

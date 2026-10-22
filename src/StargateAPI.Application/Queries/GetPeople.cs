@@ -13,9 +13,9 @@ namespace StargateAPI.Application.Queries
     /// optional normalized prefix filter, matched literally (% and _ are ordinary characters).
     /// </summary>
     public sealed record GetPeople(int? Page = null, int? PageSize = null, string? Name = null)
-        : IRequest<Result<PagedResponse<PersonSummaryDto>>>;
+        : IRequest<Result<PagedResponse<PersonDetailDto>>>;
 
-    public class GetPeopleHandler : IRequestHandler<GetPeople, Result<PagedResponse<PersonSummaryDto>>>
+    public class GetPeopleHandler : IRequestHandler<GetPeople, Result<PagedResponse<PersonDetailDto>>>
     {
         public const int DefaultPageSize = 25;
         public const int MaxPageSize = 100;
@@ -27,7 +27,7 @@ namespace StargateAPI.Application.Queries
             _context = context;
         }
 
-        public async Task<Result<PagedResponse<PersonSummaryDto>>> Handle(GetPeople request, CancellationToken cancellationToken)
+        public async Task<Result<PagedResponse<PersonDetailDto>>> Handle(GetPeople request, CancellationToken cancellationToken)
         {
             var page = request.Page ?? 1;
             var pageSize = request.PageSize ?? DefaultPageSize;
@@ -66,7 +66,7 @@ namespace StargateAPI.Application.Queries
                 .ToListAsync(cancellationToken);
 
             var totalPages = totalCount == 0 ? 0 : (int)((totalCount + (long)pageSize - 1) / pageSize);
-            return new PagedResponse<PersonSummaryDto>(items, page, pageSize, totalCount, totalPages);
+            return new PagedResponse<PersonDetailDto>(items, page, pageSize, totalCount, totalPages);
         }
     }
 }

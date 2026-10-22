@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using StargateAPI.Tests.Infrastructure;
 
@@ -28,9 +26,10 @@ public class StarterBaselineTests
     {
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.GetAsync("/Person", TestContext.Current.CancellationToken);
+        var response = await api.GraphQLAsync(Operations.People);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(response.HasRequestErrors);
+        Assert.Equal(0, response["people"].GetProperty("totalCount").GetInt32());
     }
 
     [Fact]
@@ -38,9 +37,9 @@ public class StarterBaselineTests
     {
         await using var api = await TestApi.CreateAsync();
 
-        var response = await api.Client.PostAsJsonAsync("/Person", "Ada Lovelace", TestContext.Current.CancellationToken);
+        var response = await api.GraphQLAsync(Operations.CreatePerson, new { input = new { name = "Ada Lovelace" } });
 
-        Assert.True(response.IsSuccessStatusCode, $"Create returned {(int)response.StatusCode}");
+        Assert.True(response.Succeeded("createPerson"));
         var (people, details, duties) = await api.WithContextAsync(async context => (
             await context.People.CountAsync(p => p.Name == "Ada Lovelace"),
             await context.AstronautDetails.CountAsync(),
@@ -56,8 +55,8 @@ public class StarterBaselineTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
 
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
-        (await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).Succeeded("assignDuty"));
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).Succeeded("assignDuty"));
 
         var duties = await api.WithContextAsync(context =>
             context.AstronautDuties.OrderBy(d => d.DutyStartDate).ToListAsync());
@@ -72,8 +71,8 @@ public class StarterBaselineTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Grace Hopper");
 
-        (await api.PostDutyAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
-        (await api.PostDutyAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "1LT", "Pilot", "2020-01-01")).Succeeded("assignDuty"));
+        Assert.True((await api.AssignDutyByNameAsync("Grace Hopper", "CPT", "Commander", "2021-03-10")).Succeeded("assignDuty"));
 
         var details = await api.WithContextAsync(context => context.AstronautDetails.ToListAsync());
         var detail = Assert.Single(details);
@@ -88,8 +87,8 @@ public class StarterBaselineTests
         await using var api = await TestApi.CreateAsync();
         await api.SeedPersonAsync("Sally Ride");
 
-        (await api.PostDutyAsync("Sally Ride", "1LT", "Pilot", "2020-01-01")).EnsureSuccessStatusCode();
-        (await api.PostDutyAsync("Sally Ride", "CPT", "RETIRED", "2025-01-01")).EnsureSuccessStatusCode();
+        Assert.True((await api.AssignDutyByNameAsync("Sally Ride", "1LT", "Pilot", "2020-01-01")).Succeeded("assignDuty"));
+        Assert.True((await api.AssignDutyByNameAsync("Sally Ride", "CPT", "RETIRED", "2025-01-01")).Succeeded("assignDuty"));
 
         var detail = await api.WithContextAsync(context => context.AstronautDetails.SingleAsync());
         Assert.Equal("RETIRED", detail.CurrentDutyTitle);
@@ -103,8 +102,8 @@ public class StarterBaselineTests
         // already held, because its CreatePersonPreProcessor was never registered with MediatR.
         await using var api = await TestApi.CreateAsync();
 
-        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
-        (await api.Client.PostAsJsonAsync("/Person", "Alex Smith", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        Assert.True((await api.GraphQLAsync(Operations.CreatePerson, new { input = new { name = "Alex Smith" } })).Succeeded("createPerson"));
+        Assert.True((await api.GraphQLAsync(Operations.CreatePerson, new { input = new { name = "Alex Smith" } })).Succeeded("createPerson"));
 
         var count = await api.WithContextAsync(context => context.People.CountAsync(p => p.Name == "Alex Smith"));
         Assert.Equal(2, count);
